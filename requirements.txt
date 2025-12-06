@@ -1,9 +1,10 @@
 python-telegram-bot==20.7
 requests==2.31.0
 phonenumbers==8.13.27
-whois==0.9.28
-dnspython==2.4.2
-beautifulsoup4==4.12.3
-shodan==1.29.1
-aiohttp==3.9.1
-python-dotenv==1.0.0
+whois
+dnspython
+beautifulsoup4
+shodan
+aiohttp
+python-dotenv
+pytz
