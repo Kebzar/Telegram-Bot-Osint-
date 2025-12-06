@@ -9,6 +9,19 @@ services:
         sync: false
       - key: ADMIN_ID
         sync: false
-      - key: RENDER
-        value: true
-    healthCheckPath: /health
+      - key: SHODAN_API_KEY
+        sync: false
+      - key: HUNTER_API_KEY
+        sync: false
+      - key: HIBP_API_KEY
+        sync: false
+      - key: DEHASHED_EMAIL
+        sync: false
+      - key: DEHASHED_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        value: sqlite:///data/leakosint_bot.db
+    disk:
+      name: data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
