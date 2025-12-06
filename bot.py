@@ -757,7 +757,7 @@ if SHODAN_API_KEY:
         logger.error(f"Shodan error: {e}")
         info['shodan'] = {'error': str(e)}
         
-        return info
+      return info
     
     async def search_password(self, password: str) -> Dict:
         """Ricerca password in data breach"""
