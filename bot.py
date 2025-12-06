@@ -3704,42 +3704,29 @@ def load_addresses_documents_data():
     except Exception as e:
         logger.error(f"Error loading addresses/documents: {e}")
         return False
-# ==================== HEALTH CHECK ====================
-from flask import Flask, jsonify
 
-# Crea app Flask separata per health check
-health_app = Flask(__name__)
-
-@health_app.route('/health', methods=['GET'])
-def health_check():
-    return jsonify({'status': 'ok', 'service': 'leakosint-bot'}), 200
-
-# Avvia Flask in un thread separato
-def start_health_check():
-    port = int(os.environ.get('HEALTH_CHECK_PORT', 8080))
-    health_app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
-
-# Avvia health check in un thread
-import threading
-health_thread = threading.Thread(target=start_health_check, daemon=True)
-health_thread.start()
 # ==================== MAIN ====================
 
 def main():
     """Funzione principale"""
     
+    # Verifica che il token sia configurato
+    if BOT_TOKEN == 'YOUR_BOT_TOKEN_HERE':
+        logger.error("❌ BOT_TOKEN non configurato! Configura la variabile d'ambiente TELEGRAM_BOT_TOKEN")
+        sys.exit(1)
+    
     # Carica dati Facebook leaks all'avvio
     logger.info("📥 Loading Facebook leaks data...")
     load_facebook_leaks_data()
     
-    # NUOVO: Carica dati documenti e indirizzi
+    # Carica dati documenti e indirizzi
     logger.info("📥 Loading addresses/documents data...")
     load_addresses_documents_data()
     
     # Crea bot
     bot = LeakosintBot()
     
-    # Crea applicazione - MODIFICATO PER RENDER
+    # Crea applicazione
     application = Application.builder().token(BOT_TOKEN).build()
     
     # Handler comandi
@@ -3770,27 +3757,39 @@ def main():
     # Handler per messaggi di testo (ricerche normali)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message))
     
-    # MODIFICA PER RENDER - Avvia webhook invece di polling
-    if os.environ.get('RENDER'):
+    # Configurazione per Render con webhook
+    if 'RENDER' in os.environ or 'WEBHOOK_URL' in os.environ:
         # Configurazione per Render
         port = int(os.environ.get('PORT', 10000))
         webhook_url = os.environ.get('WEBHOOK_URL')
         
         if not webhook_url:
             logger.error("❌ WEBHOOK_URL non configurata per Render")
-            sys.exit(1)
-            
+            # Usa l'URL predefinito di Render se non specificato
+            app_name = os.environ.get('RENDER_SERVICE_NAME', 'leakosint-bot')
+            webhook_url = f"https://{app_name}.onrender.com"
+            logger.info(f"⚠️  Usando webhook URL predefinito: {webhook_url}")
+        
         logger.info(f"🚀 Avvio bot su Render con webhook: {webhook_url}")
         
         # Avvia webhook
-        application.run_webhook(
-            listen="0.0.0.0",
-            port=port,
-            url_path=BOT_TOKEN,
-            webhook_url=f"{webhook_url}/{BOT_TOKEN}",
-            drop_pending_updates=True
-        )
+        try:
+            application.run_webhook(
+                listen="0.0.0.0",
+                port=port,
+                url_path=BOT_TOKEN,
+                webhook_url=f"{webhook_url}/{BOT_TOKEN}",
+                drop_pending_updates=True
+            )
+        except Exception as e:
+            logger.error(f"❌ Errore webhook: {e}")
+            # Fallback a polling
+            logger.info("🔄 Fallback a polling...")
+            application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
     else:
         # Avvio locale con polling
         logger.info("🏠 Avvio bot in modalità sviluppo (polling)")
         application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+
+if __name__ == '__main__':
+    main()
