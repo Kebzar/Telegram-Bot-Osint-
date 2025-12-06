@@ -3775,7 +3775,6 @@ def main():
         )
     else:
         # Avvio locale con polling
-        polling (funziona meglio su Render free)
     logger.info("🏠 Avvio bot in modalità polling")
     application.run_polling(
         allowed_updates=Update.ALL_TYPES,
