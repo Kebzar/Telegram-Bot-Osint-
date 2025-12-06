@@ -3700,126 +3700,113 @@ def load_addresses_documents_data():
         logger.error(f"Error loading addresses/documents: {e}")
         return False
 
-# ==================== MAIN SEMPLIFICATO PER RENDER ====================
+# ==================== VERSIONE COMPATIBILE PER RENDER ====================
 
-async def health_check(request):
-    """Health check endpoint per Render"""
-    return web.Response(text="OK")
+import asyncio
+from threading import Thread
+from aiohttp import web
 
-async def webhook_handler(request):
-    """Gestisce le richieste webhook da Telegram"""
-    if request.method == "POST":
-        try:
-            data = await request.json()
-            update = Update.de_json(data, app.bot)
-            await app.process_update(update)
-            return web.Response()
-        except Exception as e:
-            logger.error(f"Webhook error: {e}")
-            return web.Response(status=500)
-    else:
-        return web.Response(status=400)
-
-async def start_webhook_server():
-    """Avvia server web per Render"""
-    
-    # Carica dati all'avvio
+def load_initial_data():
+    """Carica dati iniziali"""
     logger.info("📥 Loading Facebook leaks data...")
     load_facebook_leaks_data()
     
     logger.info("📥 Loading addresses/documents data...")
     load_addresses_documents_data()
+
+async def health_check(request):
+    """Health check endpoint per Render"""
+    return web.Response(text="OK")
+
+async def handle_webhook(request):
+    """Gestisce webhook per Render"""
+    if request.method == "POST":
+        try:
+            data = await request.json()
+            update = Update.de_json(data, application.bot)
+            await application.update_queue.put(update)
+            return web.Response()
+        except Exception as e:
+            logger.error(f"Webhook error: {e}")
+            return web.Response(status=500)
+    return web.Response(status=400)
+
+def start_web_server():
+    """Avvia server web per Render"""
+    app = web.Application()
+    app.router.add_post('/webhook', handle_webhook)
+    app.router.add_get('/', health_check)
+    app.router.add_get('/health', health_check)
+    
+    port = int(os.environ.get('PORT', 10000))
+    web.run_app(app, host='0.0.0.0', port=port)
+
+def main():
+    """Funzione principale"""
+    # Carica dati iniziali
+    load_initial_data()
     
     # Crea bot instance
     bot_instance = LeakosintBot()
     
-    # Crea applicazione Telegram
-    global app
-    app = Application.builder().token(BOT_TOKEN).build()
+    # Crea applicazione Telegram con polling
+    global application
+    application = Application.builder().token(BOT_TOKEN).build()
     
     # Handler comandi
-    app.add_handler(CommandHandler("start", bot_instance.start))
-    app.add_handler(CommandHandler("menu", bot_instance.menu_completo))
-    app.add_handler(CommandHandler("balance", bot_instance.balance_command))
-    app.add_handler(CommandHandler("buy", bot_instance.buy_command))
-    app.add_handler(CommandHandler("admin", bot_instance.admin_panel))
-    app.add_handler(CommandHandler("addcredits", bot_instance.addcredits_command))
-    app.add_handler(CommandHandler("help", bot_instance.help_command))
-    app.add_handler(CommandHandler("utf8", bot_instance.utf8_command))
+    application.add_handler(CommandHandler("start", bot_instance.start))
+    application.add_handler(CommandHandler("menu", bot_instance.menu_completo))
+    application.add_handler(CommandHandler("balance", bot_instance.balance_command))
+    application.add_handler(CommandHandler("buy", bot_instance.buy_command))
+    application.add_handler(CommandHandler("admin", bot_instance.admin_panel))
+    application.add_handler(CommandHandler("addcredits", bot_instance.addcredits_command))
+    application.add_handler(CommandHandler("help", bot_instance.help_command))
+    application.add_handler(CommandHandler("utf8", bot_instance.utf8_command))
     
     # Handler per callback dei pulsanti inline
-    app.add_handler(CallbackQueryHandler(bot_instance.handle_button_callback))
+    application.add_handler(CallbackQueryHandler(bot_instance.handle_button_callback))
     
     # Handler per ricerche social specifiche
-    app.add_handler(MessageHandler(
+    application.add_handler(MessageHandler(
         filters.Regex(r'(?i)(telegram|instagram|facebook|vk|tg|ig|fb|vkontakte)') & ~filters.COMMAND,
         bot_instance.handle_social_search
     ))
     
     # Handler per documenti (ricerca di massa)
-    app.add_handler(MessageHandler(
+    application.add_handler(MessageHandler(
         filters.Document.ALL & ~filters.COMMAND,
         bot_instance.handle_document
     ))
     
     # Handler per messaggi di testo (ricerche normali)
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot_instance.handle_message))
-    
-    # Inizializza l'applicazione
-    await app.initialize()
-    
-    # Configura webhook se siamo su Render
-    render_url = os.environ.get('RENDER_EXTERNAL_URL')
-    
-    if render_url:
-        # Configura webhook
-        webhook_url = f"{render_url}/webhook"
-        await app.bot.set_webhook(url=webhook_url)
-        logger.info(f"✅ Webhook configurato su: {webhook_url}")
-        
-        # Crea server web per Render
-        server = web.Application()
-        server.router.add_post('/webhook', webhook_handler)
-        server.router.add_get('/', health_check)
-        server.router.add_get('/health', health_check)
-        
-        # Ottieni la porta da Render (default 10000)
-        port = int(os.environ.get('PORT', 10000))
-        
-        # Avvia server
-        runner = web.AppRunner(server)
-        await runner.setup()
-        site = web.TCPSite(runner, '0.0.0.0', port)
-        await site.start()
-        
-        logger.info(f"🚀 Server avviato su porta {port}")
-        logger.info(f"🌐 Health check disponibile su: http://0.0.0.0:{port}/health")
-        
-        # Mantieni il server in esecuzione
-        await asyncio.Event().wait()
-    else:
-        # Modalità polling per sviluppo locale
-        logger.info("🏠 Avvio in modalità polling (sviluppo locale)")
-        await app.run_polling()
-
-def run():
-    """Funzione di avvio per Render"""
-    asyncio.run(start_webhook_server())
-
-# ==================== AVVIO PRINCIPALE ====================
-
-if __name__ == '__main__':
-    # Gestisci segnali di terminazione
-    signal.signal(signal.SIGINT, lambda s, f: sys.exit(0))
-    signal.signal(signal.SIGTERM, lambda s, f: sys.exit(0))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot_instance.handle_message))
     
     # Verifica se siamo su Render
     if os.environ.get('RENDER'):
         logger.info("🚀 Rilevato ambiente Render.com")
-        logger.info("🔄 Avvio in modalità webhook...")
+        
+        # Configura webhook per Render
+        render_url = os.environ.get('RENDER_EXTERNAL_URL')
+        if render_url:
+            # Avvia server web in thread separato
+            web_thread = Thread(target=start_web_server, daemon=True)
+            web_thread.start()
+            logger.info(f"🌐 Server web avviato su porta {os.environ.get('PORT', 10000)}")
+            
+            # Configura webhook
+            webhook_url = f"{render_url}/webhook"
+            application.bot.set_webhook(url=webhook_url)
+            logger.info(f"✅ Webhook configurato su: {webhook_url}")
+            
+            # Avvia l'applicazione
+            application.run_polling()
+        else:
+            logger.error("❌ RENDER_EXTERNAL_URL non configurato")
+            application.run_polling()
     else:
+        # Ambiente locale - usa polling normale
         logger.info("🏠 Rilevato ambiente locale")
-        logger.info("🔄 Avvio in modalità polling...")
-    
-    # Avvia l'applicazione
-    run()
+        application.run_polling()
+
+if __name__ == '__main__':
+    main()
