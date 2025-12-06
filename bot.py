@@ -3707,26 +3707,22 @@ def load_addresses_documents_data():
 
 # ==================== MAIN ====================
 
+
 def main():
     """Funzione principale"""
-    
-    # Verifica che il token sia configurato
-    if BOT_TOKEN == 'YOUR_BOT_TOKEN_HERE':
-        logger.error("❌ BOT_TOKEN non configurato! Configura la variabile d'ambiente TELEGRAM_BOT_TOKEN")
-        sys.exit(1)
     
     # Carica dati Facebook leaks all'avvio
     logger.info("📥 Loading Facebook leaks data...")
     load_facebook_leaks_data()
     
-    # Carica dati documenti e indirizzi
+    # NUOVO: Carica dati documenti e indirizzi
     logger.info("📥 Loading addresses/documents data...")
     load_addresses_documents_data()
     
     # Crea bot
     bot = LeakosintBot()
     
-    # Crea applicazione
+    # Crea applicazione - MODIFICATO PER RENDER
     application = Application.builder().token(BOT_TOKEN).build()
     
     # Handler comandi
@@ -3757,39 +3753,32 @@ def main():
     # Handler per messaggi di testo (ricerche normali)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message))
     
-    # Configurazione per Render con webhook
-    if 'RENDER' in os.environ or 'WEBHOOK_URL' in os.environ:
+    # MODIFICA PER RENDER - Avvia webhook invece di polling
+    if os.environ.get('RENDER'):
         # Configurazione per Render
         port = int(os.environ.get('PORT', 10000))
         webhook_url = os.environ.get('WEBHOOK_URL')
         
         if not webhook_url:
             logger.error("❌ WEBHOOK_URL non configurata per Render")
-            # Usa l'URL predefinito di Render se non specificato
-            app_name = os.environ.get('RENDER_SERVICE_NAME', 'leakosint-bot')
-            webhook_url = f"https://{app_name}.onrender.com"
-            logger.info(f"⚠️  Usando webhook URL predefinito: {webhook_url}")
-        
+            sys.exit(1)
+            
         logger.info(f"🚀 Avvio bot su Render con webhook: {webhook_url}")
         
         # Avvia webhook
-        try:
-            application.run_webhook(
-                listen="0.0.0.0",
-                port=port,
-                url_path=BOT_TOKEN,
-                webhook_url=f"{webhook_url}/{BOT_TOKEN}",
-                drop_pending_updates=True
-            )
-        except Exception as e:
-            logger.error(f"❌ Errore webhook: {e}")
-            # Fallback a polling
-            logger.info("🔄 Fallback a polling...")
-            application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=port,
+            url_path=BOT_TOKEN,
+            webhook_url=f"{webhook_url}/{BOT_TOKEN}",
+            drop_pending_updates=True
+        )
     else:
         # Avvio locale con polling
-        logger.info("🏠 Avvio bot in modalità sviluppo (polling)")
-        application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
-
-if __name__ == '__main__':
-    main()
+        polling (funziona meglio su Render free)
+    logger.info("🏠 Avvio bot in modalità polling")
+    application.run_polling(
+        allowed_updates=Update.ALL_TYPES,
+        drop_pending_updates=True,
+        close_loop=False
+    )
