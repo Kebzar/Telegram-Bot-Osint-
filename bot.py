@@ -3704,7 +3704,25 @@ def load_addresses_documents_data():
     except Exception as e:
         logger.error(f"Error loading addresses/documents: {e}")
         return False
+# ==================== HEALTH CHECK ====================
+from flask import Flask, jsonify
 
+# Crea app Flask separata per health check
+health_app = Flask(__name__)
+
+@health_app.route('/health', methods=['GET'])
+def health_check():
+    return jsonify({'status': 'ok', 'service': 'leakosint-bot'}), 200
+
+# Avvia Flask in un thread separato
+def start_health_check():
+    port = int(os.environ.get('HEALTH_CHECK_PORT', 8080))
+    health_app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+
+# Avvia health check in un thread
+import threading
+health_thread = threading.Thread(target=start_health_check, daemon=True)
+health_thread.start()
 # ==================== MAIN ====================
 
 def main():
