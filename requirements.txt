@@ -1,4 +1,4 @@
-python-telegram-bot==20.7
+python-telegram-bot==20.6
 requests==2.31.0
 phonenumbers==8.13.27
 python-whois==0.9.3
