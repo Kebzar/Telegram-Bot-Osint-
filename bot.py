@@ -3703,6 +3703,8 @@ def load_addresses_documents_data():
 
 # ==================== HANDLER PER HEALTH CHECK (RENDER) ====================
 
+   # ==================== HANDLER PER HEALTH CHECK (RENDER) ====================
+
 async def health_check(request):
     """Health check endpoint per Render"""
     return web.Response(text="OK")
@@ -3717,25 +3719,10 @@ async def webhook_handler(request):
     else:
         return web.Response(status=400)
 
-# ==================== FUNZIONE PER CONFIGURARE WEBHOOK (RENDER) ====================
-
-async def setup_webhook(application):
-    """Configura webhook per Render"""
-    render_url = os.environ.get('RENDER_EXTERNAL_URL')
-    
-    if render_url:
-        webhook_url = f"{render_url}/webhook"
-        await application.bot.set_webhook(url=webhook_url)
-        logger.info(f"✅ Webhook configurato su: {webhook_url}")
-        return True
-    else:
-        logger.warning("⚠️ RENDER_EXTERNAL_URL non trovato")
-        return False
-
 # ==================== AVVIO PER RENDER CON SERVER WEB ====================
 
-async def start_webhook_server():
-    """Avvia server web per Render"""
+async def main():
+    """Funzione principale per Render"""
     
     # Carica dati all'avvio
     logger.info("📥 Loading Facebook leaks data...")
@@ -3744,7 +3731,9 @@ async def start_webhook_server():
     logger.info("📥 Loading addresses/documents data...")
     load_addresses_documents_data()
     
-    # Crea bot
+    global application  # Per essere usata nel webhook_handler
+    
+    # Crea bot instance
     bot_instance = LeakosintBot()
     
     # Crea applicazione Telegram
@@ -3817,7 +3806,7 @@ async def start_webhook_server():
 
 def run():
     """Funzione di avvio per Render"""
-    asyncio.run(start_webhook_server())
+    asyncio.run(main())
 
 # ==================== AVVIO PRINCIPALE ====================
 
