@@ -1,0 +1,8 @@
+python-telegram-bot==20.7
+requests==2.31.0
+phonenumbers==8.13.27
+python-whois==0.9.3
+dnspython==2.4.2
+beautifulsoup4==4.12.2
+shodan==1.29.3
+pandas==2.0.3
