@@ -8,7 +8,8 @@ import json
 import re
 import csv
 import io
-import socket
+import signal
+import sys
 from datetime import datetime
 from typing import Dict, List, Tuple, Optional
 from urllib.parse import quote_plus
@@ -20,8 +21,6 @@ import whois
 import dns.resolver
 from bs4 import BeautifulSoup
 import shodan
-import signal
-import sys
 from aiohttp import web
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -3333,7 +3332,7 @@ Errore: {str(e)[:100]}
                 clean_query = query.lower().replace("telegram", "").replace("tg", "").strip()
                 await self.search_social_exact(update, msg, clean_query, user_id, data_italiana)
             
-            # Se la query contiene "instagram" o "ig"
+            # Se la query contiene "instagram" ou "ig"
             elif "instagram" in query.lower() or "ig" in query.lower():
                 clean_query = query.lower().replace("instagram", "").replace("ig", "").strip()
                 await self.search_social_exact(update, msg, clean_query, user_id, data_italiana)
@@ -3343,7 +3342,7 @@ Errore: {str(e)[:100]}
                 clean_query = query.lower().replace("facebook", "").replace("fb", "").strip()
                 await self.search_facebook_complete(update, msg, clean_query, user_id, data_italiana)
             
-            # Se la query contiene "vk" o "vkontakte"
+            # Se la query contiene "vk" ou "vkontakte"
             elif "vk" in query.lower() or "vkontakte" in query.lower():
                 clean_query = query.lower().replace("vk", "").replace("vkontakte", "").strip()
                 await self.search_social_exact(update, msg, clean_query, user_id, data_italiana)
@@ -3701,9 +3700,7 @@ def load_addresses_documents_data():
         logger.error(f"Error loading addresses/documents: {e}")
         return False
 
-# ==================== HANDLER PER HEALTH CHECK (RENDER) ====================
-
-   # ==================== HANDLER PER HEALTH CHECK (RENDER) ====================
+# ==================== MAIN SEMPLIFICATO PER RENDER ====================
 
 async def health_check(request):
     """Health check endpoint per Render"""
@@ -3712,17 +3709,19 @@ async def health_check(request):
 async def webhook_handler(request):
     """Gestisce le richieste webhook da Telegram"""
     if request.method == "POST":
-        data = await request.json()
-        update = Update.de_json(data, application.bot)
-        await application.process_update(update)
-        return web.Response()
+        try:
+            data = await request.json()
+            update = Update.de_json(data, app.bot)
+            await app.process_update(update)
+            return web.Response()
+        except Exception as e:
+            logger.error(f"Webhook error: {e}")
+            return web.Response(status=500)
     else:
         return web.Response(status=400)
 
-# ==================== AVVIO PER RENDER CON SERVER WEB ====================
-
-async def main():
-    """Funzione principale per Render"""
+async def start_webhook_server():
+    """Avvia server web per Render"""
     
     # Carica dati all'avvio
     logger.info("📥 Loading Facebook leaks data...")
@@ -3731,44 +3730,43 @@ async def main():
     logger.info("📥 Loading addresses/documents data...")
     load_addresses_documents_data()
     
-    global application  # Per essere usata nel webhook_handler
-    
     # Crea bot instance
     bot_instance = LeakosintBot()
     
     # Crea applicazione Telegram
-    application = Application.builder().token(BOT_TOKEN).build()
+    global app
+    app = Application.builder().token(BOT_TOKEN).build()
     
     # Handler comandi
-    application.add_handler(CommandHandler("start", bot_instance.start))
-    application.add_handler(CommandHandler("menu", bot_instance.menu_completo))
-    application.add_handler(CommandHandler("balance", bot_instance.balance_command))
-    application.add_handler(CommandHandler("buy", bot_instance.buy_command))
-    application.add_handler(CommandHandler("admin", bot_instance.admin_panel))
-    application.add_handler(CommandHandler("addcredits", bot_instance.addcredits_command))
-    application.add_handler(CommandHandler("help", bot_instance.help_command))
-    application.add_handler(CommandHandler("utf8", bot_instance.utf8_command))
+    app.add_handler(CommandHandler("start", bot_instance.start))
+    app.add_handler(CommandHandler("menu", bot_instance.menu_completo))
+    app.add_handler(CommandHandler("balance", bot_instance.balance_command))
+    app.add_handler(CommandHandler("buy", bot_instance.buy_command))
+    app.add_handler(CommandHandler("admin", bot_instance.admin_panel))
+    app.add_handler(CommandHandler("addcredits", bot_instance.addcredits_command))
+    app.add_handler(CommandHandler("help", bot_instance.help_command))
+    app.add_handler(CommandHandler("utf8", bot_instance.utf8_command))
     
     # Handler per callback dei pulsanti inline
-    application.add_handler(CallbackQueryHandler(bot_instance.handle_button_callback))
+    app.add_handler(CallbackQueryHandler(bot_instance.handle_button_callback))
     
     # Handler per ricerche social specifiche
-    application.add_handler(MessageHandler(
+    app.add_handler(MessageHandler(
         filters.Regex(r'(?i)(telegram|instagram|facebook|vk|tg|ig|fb|vkontakte)') & ~filters.COMMAND,
         bot_instance.handle_social_search
     ))
     
     # Handler per documenti (ricerca di massa)
-    application.add_handler(MessageHandler(
+    app.add_handler(MessageHandler(
         filters.Document.ALL & ~filters.COMMAND,
         bot_instance.handle_document
     ))
     
     # Handler per messaggi di testo (ricerche normali)
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot_instance.handle_message))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot_instance.handle_message))
     
     # Inizializza l'applicazione
-    await application.initialize()
+    await app.initialize()
     
     # Configura webhook se siamo su Render
     render_url = os.environ.get('RENDER_EXTERNAL_URL')
@@ -3776,20 +3774,20 @@ async def main():
     if render_url:
         # Configura webhook
         webhook_url = f"{render_url}/webhook"
-        await application.bot.set_webhook(url=webhook_url)
+        await app.bot.set_webhook(url=webhook_url)
         logger.info(f"✅ Webhook configurato su: {webhook_url}")
         
         # Crea server web per Render
-        app = web.Application()
-        app.router.add_post('/webhook', webhook_handler)
-        app.router.add_get('/', health_check)
-        app.router.add_get('/health', health_check)
+        server = web.Application()
+        server.router.add_post('/webhook', webhook_handler)
+        server.router.add_get('/', health_check)
+        server.router.add_get('/health', health_check)
         
         # Ottieni la porta da Render (default 10000)
         port = int(os.environ.get('PORT', 10000))
         
         # Avvia server
-        runner = web.AppRunner(app)
+        runner = web.AppRunner(server)
         await runner.setup()
         site = web.TCPSite(runner, '0.0.0.0', port)
         await site.start()
@@ -3802,11 +3800,11 @@ async def main():
     else:
         # Modalità polling per sviluppo locale
         logger.info("🏠 Avvio in modalità polling (sviluppo locale)")
-        await application.run_polling()
+        await app.run_polling()
 
 def run():
     """Funzione di avvio per Render"""
-    asyncio.run(main())
+    asyncio.run(start_webhook_server())
 
 # ==================== AVVIO PRINCIPALE ====================
 
