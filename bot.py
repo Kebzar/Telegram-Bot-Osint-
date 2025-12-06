@@ -20,6 +20,9 @@ import whois
 import dns.resolver
 from bs4 import BeautifulSoup
 import shodan
+import signal
+import sys
+from aiohttp import web
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -3698,30 +3701,41 @@ def load_addresses_documents_data():
         logger.error(f"Error loading addresses/documents: {e}")
         return False
 
+# ==================== HANDLER PER HEALTH CHECK (RENDER) ====================
+
+async def health_check(request):
+    """Health check endpoint per Render"""
+    return web.Response(text="OK")
+
+async def webhook_handler(request):
+    """Gestisce le richieste webhook da Telegram"""
+    if request.method == "POST":
+        data = await request.json()
+        update = Update.de_json(data, application.bot)
+        await application.process_update(update)
+        return web.Response()
+    else:
+        return web.Response(status=400)
+
 # ==================== FUNZIONE PER CONFIGURARE WEBHOOK (RENDER) ====================
 
-async def set_webhook():
+async def setup_webhook(application):
     """Configura webhook per Render"""
-    from telegram import Bot
-    
-    bot = Bot(token=BOT_TOKEN)
-    
-    # Ottieni l'URL di Render dalla variabile d'ambiente
     render_url = os.environ.get('RENDER_EXTERNAL_URL')
     
     if render_url:
         webhook_url = f"{render_url}/webhook"
-        await bot.set_webhook(url=webhook_url)
+        await application.bot.set_webhook(url=webhook_url)
         logger.info(f"✅ Webhook configurato su: {webhook_url}")
         return True
     else:
-        logger.warning("⚠️ RENDER_EXTERNAL_URL non trovato, usando polling")
+        logger.warning("⚠️ RENDER_EXTERNAL_URL non trovato")
         return False
 
-# ==================== MAIN MODIFICATO PER RENDER ====================
+# ==================== AVVIO PER RENDER CON SERVER WEB ====================
 
-async def main():
-    """Funzione principale per Render"""
+async def start_webhook_server():
+    """Avvia server web per Render"""
     
     # Carica dati all'avvio
     logger.info("📥 Loading Facebook leaks data...")
@@ -3731,74 +3745,94 @@ async def main():
     load_addresses_documents_data()
     
     # Crea bot
-    bot = LeakosintBot()
+    bot_instance = LeakosintBot()
     
-    # Crea applicazione
+    # Crea applicazione Telegram
     application = Application.builder().token(BOT_TOKEN).build()
     
     # Handler comandi
-    application.add_handler(CommandHandler("start", bot.start))
-    application.add_handler(CommandHandler("menu", bot.menu_completo))
-    application.add_handler(CommandHandler("balance", bot.balance_command))
-    application.add_handler(CommandHandler("buy", bot.buy_command))
-    application.add_handler(CommandHandler("admin", bot.admin_panel))
-    application.add_handler(CommandHandler("addcredits", bot.addcredits_command))
-    application.add_handler(CommandHandler("help", bot.help_command))
-    application.add_handler(CommandHandler("utf8", bot.utf8_command))
+    application.add_handler(CommandHandler("start", bot_instance.start))
+    application.add_handler(CommandHandler("menu", bot_instance.menu_completo))
+    application.add_handler(CommandHandler("balance", bot_instance.balance_command))
+    application.add_handler(CommandHandler("buy", bot_instance.buy_command))
+    application.add_handler(CommandHandler("admin", bot_instance.admin_panel))
+    application.add_handler(CommandHandler("addcredits", bot_instance.addcredits_command))
+    application.add_handler(CommandHandler("help", bot_instance.help_command))
+    application.add_handler(CommandHandler("utf8", bot_instance.utf8_command))
     
     # Handler per callback dei pulsanti inline
-    application.add_handler(CallbackQueryHandler(bot.handle_button_callback))
+    application.add_handler(CallbackQueryHandler(bot_instance.handle_button_callback))
     
     # Handler per ricerche social specifiche
     application.add_handler(MessageHandler(
         filters.Regex(r'(?i)(telegram|instagram|facebook|vk|tg|ig|fb|vkontakte)') & ~filters.COMMAND,
-        bot.handle_social_search
+        bot_instance.handle_social_search
     ))
     
     # Handler per documenti (ricerca di massa)
     application.add_handler(MessageHandler(
         filters.Document.ALL & ~filters.COMMAND,
-        bot.handle_document
+        bot_instance.handle_document
     ))
     
     # Handler per messaggi di testo (ricerche normali)
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot_instance.handle_message))
     
-    # Configura webhook per Render se disponibile
+    # Inizializza l'applicazione
+    await application.initialize()
+    
+    # Configura webhook se siamo su Render
     render_url = os.environ.get('RENDER_EXTERNAL_URL')
     
     if render_url:
         # Configura webhook
-        port = int(os.environ.get('PORT', 10000))
         webhook_url = f"{render_url}/webhook"
-        
         await application.bot.set_webhook(url=webhook_url)
         logger.info(f"✅ Webhook configurato su: {webhook_url}")
         
-        # Avvia webhook
-        await application.run_webhook(
-            listen="0.0.0.0",
-            port=port,
-            url_path="webhook",
-            webhook_url=webhook_url
-        )
+        # Crea server web per Render
+        app = web.Application()
+        app.router.add_post('/webhook', webhook_handler)
+        app.router.add_get('/', health_check)
+        app.router.add_get('/health', health_check)
+        
+        # Ottieni la porta da Render (default 10000)
+        port = int(os.environ.get('PORT', 10000))
+        
+        # Avvia server
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, '0.0.0.0', port)
+        await site.start()
+        
+        logger.info(f"🚀 Server avviato su porta {port}")
+        logger.info(f"🌐 Health check disponibile su: http://0.0.0.0:{port}/health")
+        
+        # Mantieni il server in esecuzione
+        await asyncio.Event().wait()
     else:
         # Modalità polling per sviluppo locale
-        logger.info("✅ LeakosintBot avviato in modalità polling!")
-        logger.info("✅ Modifiche applicate: shop💸, help❓, crypto payment, user details")
-        await application.run_polling(allowed_updates=Update.ALL_TYPES)
+        logger.info("🏠 Avvio in modalità polling (sviluppo locale)")
+        await application.run_polling()
 
 def run():
     """Funzione di avvio per Render"""
-    asyncio.run(main())
+    asyncio.run(start_webhook_server())
+
+# ==================== AVVIO PRINCIPALE ====================
 
 if __name__ == '__main__':
+    # Gestisci segnali di terminazione
+    signal.signal(signal.SIGINT, lambda s, f: sys.exit(0))
+    signal.signal(signal.SIGTERM, lambda s, f: sys.exit(0))
+    
     # Verifica se siamo su Render
     if os.environ.get('RENDER'):
-        logger.info("🚀 Avvio su Render.com")
-        # Usa asyncio.run per compatibilità
-        asyncio.run(main())
+        logger.info("🚀 Rilevato ambiente Render.com")
+        logger.info("🔄 Avvio in modalità webhook...")
     else:
-        # Avvio locale
-        logger.info("🏠 Avvio locale")
-        asyncio.run(main())
+        logger.info("🏠 Rilevato ambiente locale")
+        logger.info("🔄 Avvio in modalità polling...")
+    
+    # Avvia l'applicazione
+    run()
