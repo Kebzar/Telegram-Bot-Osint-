@@ -21,7 +21,6 @@ import dns.resolver
 from bs4 import BeautifulSoup
 import shodan
 
-
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -737,27 +736,20 @@ class LeakSearchAPI:
                 logger.error(f"AbuseIPDB error: {e}")
         
         # Shodan
-if SHODAN_API_KEY:
-    try:
-        api = shodan.Shodan(SHODAN_API_KEY)
-        shodan_info = api.host(ip)
-        info['shodan'] = {
-            'ports': shodan_info.get('ports', []),
-            'hostnames': shodan_info.get('hostnames', []),
-            'org': shodan_info.get('org', ''),
-            'isp': shodan_info.get('isp', ''),
-            'vulns': shodan_info.get('vulns', [])[:3]  # Aggiunto per v1.31.0
-        }
-    except shodan.APIError as e:
-        if "No information available" in str(e):
-            info['shodan'] = {'error': 'IP not in Shodan database'}
-        else:
-            info['shodan'] = {'error': str(e)}
-    except Exception as e:
-        logger.error(f"Shodan error: {e}")
-        info['shodan'] = {'error': str(e)}
+        if SHODAN_API_KEY:
+            try:
+                api = shodan.Shodan(SHODAN_API_KEY)
+                shodan_info = api.host(ip)
+                info['shodan'] = {
+                    'ports': shodan_info.get('ports', []),
+                    'hostnames': shodan_info.get('hostnames', []),
+                    'org': shodan_info.get('org', ''),
+                    'isp': shodan_info.get('isp', '')
+                }
+            except Exception as e:
+                logger.error(f"Shodan error: {e}")
         
-      return info
+        return info
     
     async def search_password(self, password: str) -> Dict:
         """Ricerca password in data breach"""
