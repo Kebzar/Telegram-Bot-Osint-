@@ -1,0 +1,50 @@
+services:
+  - type: web
+    name: leakosint-bot
+    env: python
+    buildCommand: |
+      pip install -r requirements.txt
+      mkdir -p data
+    startCommand: python bot.py
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_ID
+        sync: false
+      - key: DATABASE_URL
+        value: sqlite:///data/leakosint.db
+      # API Keys (opzionali)
+      - key: SHODAN_API_KEY
+        sync: false
+      - key: HUNTER_API_KEY
+        sync: false
+      - key: HIBP_API_KEY
+        sync: false
+      - key: DEHASHED_EMAIL
+        sync: false
+      - key: DEHASHED_API_KEY
+        sync: false
+      - key: NUMVERIFY_KEY
+        sync: false
+      - key: ABUSEIPDB_KEY
+        sync: false
+      - key: SECURITYTRAILS_KEY
+        sync: false
+      - key: IPINFO_API_KEY
+        sync: false
+      - key: VIRUSTOTAL_API_KEY
+        sync: false
+      - key: LEAKCHECK_API_KEY
+        sync: false
+      - key: SNUSBASE_API_KEY
+        sync: false
+      - key: FACEBOOK_GRAPH_API_KEY
+        sync: false
+      - key: FACEBOOK_SEARCH_TOKEN
+        sync: false
+      - key: SOCIALSEARCH_API_KEY
+        sync: false
+      - key: FBSCRAPER_API_KEY
+        sync: false
+      - key: PORT
+        value: 10000
