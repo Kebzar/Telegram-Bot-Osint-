@@ -1,4 +1,4 @@
-python-telegram-bot[job-queue]==20.7
+python-telegram-bot[webhook]==20.7
 Flask==3.0.0
 requests==2.31.0
 phonenumbers==8.13.22
