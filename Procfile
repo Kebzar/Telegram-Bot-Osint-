@@ -1,2 +1,1 @@
-web: gunicorn bot:app --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120
-worker: python bot.py
+web: python bot.py
