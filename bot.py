@@ -3414,6 +3414,7 @@ async def setup_bot():
 
 def start_polling():
     """Avvia il bot in modalità polling (per sviluppo)"""
+    import asyncio
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     
@@ -3424,6 +3425,7 @@ def start_polling():
 
 def start_webhook():
     """Avvia il bot in modalità webhook (per Render)"""
+    import asyncio
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     
@@ -3436,15 +3438,15 @@ def start_webhook():
         logger.error("❌ WEBHOOK_URL non configurata per Render")
         sys.exit(1)
     
-    # Rimuovi la porta dal webhook_url
-    webhook_url = webhook_url.rstrip('/')
+    # Ottieni la porta da Render (Render assegna automaticamente la porta)
+    port = int(os.environ.get('PORT', 10000))
     
-    logger.info(f"🚀 Avvio bot su Render con webhook: {webhook_url}")
+    logger.info(f"🚀 Avvio bot su Render con webhook: {webhook_url}, porta: {port}")
     
-    # Avvia webhook - SENZA specificare la porta qui
+    # Avvia webhook
     application.run_webhook(
         listen="0.0.0.0",
-        port=10000,  # Usa una porta interna, Render gestirà il routing
+        port=port,
         url_path=BOT_TOKEN,
         webhook_url=f"{webhook_url}/{BOT_TOKEN}",
         drop_pending_updates=True
