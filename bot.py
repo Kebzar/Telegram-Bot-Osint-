@@ -3424,7 +3424,7 @@ def start_polling():
     logger.info("🏠 Avvio bot in modalità sviluppo (polling)")
     application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
-def def start_webhook():  # ATTENZIONE: "webhook" non "webbook"
+def def start_webhook(): 
     """Avvia il bot in modalità webhook (per Render)"""
     import asyncio
     import threading
