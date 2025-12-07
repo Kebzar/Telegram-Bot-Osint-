@@ -3708,55 +3708,78 @@ def load_addresses_documents_data():
 # ==================== MAIN ====================
 
 def main():
-    """Funzione principale"""
+    """Entry point principale per Render"""
+    import asyncio
     
-    # Verifica che il token sia configurato
-    if BOT_TOKEN == 'YOUR_BOT_TOKEN_HERE':
-        logger.error("❌ BOT_TOKEN non configurato! Configura la variabile d'ambiente TELEGRAM_BOT_TOKEN")
-        sys.exit(1)
+    # Verifica se siamo su Render
+    is_render = os.environ.get('RENDER', False)
+    port = int(os.environ.get('PORT', 10000))
     
-    # Carica dati Facebook leaks all'avvio
-    logger.info("📥 Loading Facebook leaks data...")
-    load_facebook_leaks_data()
-    
-    # Carica dati documenti e indirizzi
-    logger.info("📥 Loading addresses/documents data...")
-    load_addresses_documents_data()
-    
-    # Crea bot
-    bot = LeakosintBot()
-    
-    # Crea applicazione
-    application = Application.builder().token(BOT_TOKEN).build()
-    
-    # Handler comandi
-    application.add_handler(CommandHandler("start", bot.start))
-    application.add_handler(CommandHandler("menu", bot.menu_completo))
-    application.add_handler(CommandHandler("balance", bot.balance_command))
-    application.add_handler(CommandHandler("buy", bot.buy_command))
-    application.add_handler(CommandHandler("admin", bot.admin_panel))
-    application.add_handler(CommandHandler("addcredits", bot.addcredits_command))
-    application.add_handler(CommandHandler("help", bot.help_command))
-    application.add_handler(CommandHandler("utf8", bot.utf8_command))
-    
-    # Handler per callback dei pulsanti inline
-    application.add_handler(CallbackQueryHandler(bot.handle_button_callback))
-    
-    # Handler per ricerche social specifiche
-    application.add_handler(MessageHandler(
-        filters.Regex(r'(?i)(telegram|instagram|facebook|vk|tg|ig|fb|vkontakte)') & ~filters.COMMAND,
-        bot.handle_social_search
-    ))
-    
-    # Handler per documenti (ricerca di massa)
-    application.add_handler(MessageHandler(
-        filters.Document.ALL & ~filters.COMMAND,
-        bot.handle_document
-    ))
-    
-    # Handler per messaggi di testo (ricerche normali)
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message))
-    
-    # Avvio in modalità polling
-    logger.info
-    application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+    if is_render:
+        # Modalità webhook per Render
+        from telegram.ext import ApplicationBuilder
+        import nest_asyncio
+        
+        nest_asyncio.apply()
+        
+        # Crea applicazione
+        application = ApplicationBuilder().token(BOT_TOKEN).build()
+        
+        # Setup handlers
+        from leakosint_core import LeakosintBot
+        bot = LeakosintBot()
+        
+        application.add_handler(CommandHandler("start", bot.start))
+        application.add_handler(CommandHandler("menu", bot.menu_completo))
+        application.add_handler(CommandHandler("balance", bot.balance_command))
+        application.add_handler(CommandHandler("buy", bot.buy_command))
+        application.add_handler(CommandHandler("admin", bot.admin_panel))
+        application.add_handler(CommandHandler("addcredits", bot.addcredits_command))
+        application.add_handler(CommandHandler("help", bot.help_command))
+        application.add_handler(CommandHandler("utf8", bot.utf8_command))
+        application.add_handler(CallbackQueryHandler(bot.handle_button_callback))
+        
+        # Configura webhook
+        webhook_url = os.environ.get('WEBHOOK_URL', f'https://your-app-name.onrender.com')
+        
+        logger.info(f"🚀 Avvio webhook su Render: {webhook_url}")
+        
+        # Usa asyncio.run con un timeout molto lungo
+        async def run():
+            await application.initialize()
+            await application.start()
+            
+            # Setup webhook
+            await application.bot.set_webhook(
+                url=f"{webhook_url}/{BOT_TOKEN}",
+                drop_pending_updates=True
+            )
+            
+            # Mantieni il bot attivo
+            logger.info("🤖 Bot avviato con webhook")
+            
+            # Non fermarti mai
+            while True:
+                await asyncio.sleep(3600)  # Sleep per 1 ora
+        
+        try:
+            asyncio.run(run())
+        except KeyboardInterrupt:
+            logger.info("Bot fermato")
+        except Exception as e:
+            logger.error(f"Errore: {e}")
+    else:
+        # Modalità locale con polling
+        logger.info("🏠 Avvio in modalità sviluppo (polling)")
+        
+        from leakosint_core import LeakosintBot
+        bot = LeakosintBot()
+        
+        application = Application.builder().token(BOT_TOKEN).build()
+        
+        # Setup handlers...
+        
+        application.run_polling(allowed_updates=True)
+
+if __name__ == '__main__':
+    main()
