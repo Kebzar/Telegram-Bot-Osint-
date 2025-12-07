@@ -1,7 +1,12 @@
 python-telegram-bot==20.7
+Flask==3.0.0
 requests==2.31.0
-phonenumbers==8.13.27
+phonenumbers==8.13.22
 python-whois==0.9.3
 dnspython==2.4.2
 beautifulsoup4==4.12.2
-shodan==1.31.0
+shodan==1.29.1
+pandas==2.1.4
+aiohttp==3.9.1
+gunicorn==21.2.0
+python-dotenv==1.0.0
