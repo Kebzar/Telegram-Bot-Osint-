@@ -3475,11 +3475,4 @@ def start_webhook():
         webhook_url=f"{webhook_url}/{BOT_TOKEN}",
         drop_pending_updates=True
     )
-    if __name__ == '__main__':
-    # Controlla se siamo su Render
-    if os.environ.get('RENDER'):
-        logger.info("🎯 Modalità Render attivata")
-        start_webhook()
-    else:
-        # Modalità sviluppo: solo polling
-        start_polling()
+    
