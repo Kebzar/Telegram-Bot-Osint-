@@ -3424,7 +3424,7 @@ def start_polling():
     logger.info("🏠 Avvio bot in modalità sviluppo (polling)")
     application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
-def start_webhook():
+def def start_webhook():  # ATTENZIONE: "webhook" non "webbook"
     """Avvia il bot in modalità webhook (per Render)"""
     import asyncio
     import threading
@@ -3473,7 +3473,7 @@ def start_webhook():
     
     logger.info(f"🚀 Avvio bot su Render con webhook: {webhook_url}, porta: {port}")
     
-    # Avvia webhook
+    # Avvia webhook - CORRETTO: application.run_webhook
     application.run_webhook(
         listen="0.0.0.0",
         port=port,
@@ -3481,12 +3481,3 @@ def start_webhook():
         webhook_url=f"{webhook_url}/{BOT_TOKEN}",
         drop_pending_updates=True
     )
-
-if __name__ == '__main__':
-    # Controlla se siamo su Render
-    if os.environ.get('RENDER'):
-        logger.info("🎯 Modalità Render attivata")
-        start_webhook()
-    else:
-        # Modalità sviluppo: solo polling
-        start_polling()
