@@ -3411,7 +3411,7 @@ async def setup_bot():
     
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message))
 
-# ==================== SETUP E AVVIO BOT ====================
+# ==================== AVVIO BOT ====================
 
 async def setup_bot():
     """Configura il bot con tutti gli handler"""
@@ -3426,7 +3426,6 @@ async def setup_bot():
     # Setup bot handlers
     bot = LeakosintBot()
     
-    # Aggiungi handler
     application.add_handler(CommandHandler("start", bot.start))
     application.add_handler(CommandHandler("menu", bot.menu_completo))
     application.add_handler(CommandHandler("balance", bot.balance_command))
@@ -3464,35 +3463,35 @@ def start_polling():
     application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 def start_webhook():
-    """Avvia il bot in modalità webhook (per Render)"""
+    """Avvia il bot in modalità webhook (per Render) - VERSIONE SEMPLIFICATA"""
     import asyncio
     import threading
-    from flask import Flask
     
-    # Crea app Flask per health check
-    flask_app = Flask(__name__)
-    
-    @flask_app.route('/')
-    def index():
-        return '🤖 LeakosintBot is running!'
-    
-    @flask_app.route('/health')
-    def health():
-        return 'OK', 200
-    
-    # Avvia Flask in un thread separato
+    # Avvia Flask in un thread separato su una porta diversa
     def run_flask():
-        port = int(os.environ.get('PORT', 10000))
-        flask_app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+        flask_app = Flask(__name__)
+        
+        @flask_app.route('/')
+        def index():
+            return '🤖 LeakosintBot is running!'
+        
+        @flask_app.route('/health')
+        def health():
+            return 'OK', 200
+        
+        # Usa una porta diversa per Flask (non la porta principale di Render)
+        flask_port = 8080
+        flask_app.run(host='0.0.0.0', port=flask_port, debug=False, use_reloader=False, threaded=True)
     
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
+    logger.info("✅ Server Flask avviato sulla porta 8080")
     
     # Aspetta che Flask sia avviato
     import time
     time.sleep(3)
     
-    # Avvia il bot
+    # Avvia il bot webhook sulla porta principale
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     
@@ -3505,27 +3504,35 @@ def start_webhook():
         logger.error("❌ WEBHOOK_URL non configurata per Render")
         sys.exit(1)
     
-    # Assicurati che l'URL non abbia slash finali
     webhook_url = webhook_url.rstrip('/')
     
+    # LA PORTA PRINCIPALE è quella assegnata da Render
     port = int(os.environ.get('PORT', 10000))
     
-    logger.info(f"🚀 Avvio bot su Render con webhook: {webhook_url}, porta: {port}")
+    logger.info(f"🚀 Avvio bot webhook su porta: {port}")
+    logger.info(f"🌐 Webhook URL: {webhook_url}/{BOT_TOKEN}")
     
-    # Avvia webhook
-    application.run_webhook(
-        listen="0.0.0.0",
-        port=port,
-        url_path=BOT_TOKEN,
-        webhook_url=f"{webhook_url}/{BOT_TOKEN}",
-        drop_pending_updates=True
-    )
+    try:
+        # Avvia webhook sulla porta principale
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=port,
+            url_path=BOT_TOKEN,
+            webhook_url=f"{webhook_url}/{BOT_TOKEN}",
+            drop_pending_updates=True
+        )
+    except Exception as e:
+        logger.error(f"❌ Errore avvio webhook: {e}")
+        sys.exit(1)
 
-if __name__ == '__main__':
-    # Controlla se siamo su Render
+def main():
+    """Funzione principale"""
     if os.environ.get('RENDER'):
         logger.info("🎯 Modalità Render attivata")
         start_webhook()
     else:
-        # Modalità sviluppo: solo polling
+        logger.info("🏠 Modalità sviluppo attivata")
         start_polling()
+
+if __name__ == '__main__':
+    main()
