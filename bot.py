@@ -3775,7 +3775,7 @@ def main():
         )
     else:
         # Avvio locale con polling
-    logger.info("🏠 Avvio bot in modalità polling")
+    logger.info
     application.run_polling(
         allowed_updates=Update.ALL_TYPES,
         drop_pending_updates=True,
