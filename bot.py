@@ -3372,14 +3372,21 @@ def index():
 @app.route('/health')
 def health():
     return 'OK', 200
-
 # ==================== AVVIO BOT ====================
 
-async def setup_bot(application: Application):
+async def setup_bot():
     """Configura il bot con tutti gli handler"""
+    logger.info("📥 Loading Facebook leaks data...")
+    load_facebook_leaks_data()
+    
+    logger.info("📥 Loading addresses/documents data...")
+    load_addresses_documents_data()
+    
+    application = Application.builder().token(BOT_TOKEN).build()
+    
+    # Setup bot handlers
     bot = LeakosintBot()
     
-    # Aggiungi handler
     application.add_handler(CommandHandler("start", bot.start))
     application.add_handler(CommandHandler("menu", bot.menu_completo))
     application.add_handler(CommandHandler("balance", bot.balance_command))
@@ -3402,72 +3409,52 @@ async def setup_bot(application: Application):
     ))
     
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message))
+    
+    return application
 
 def start_polling():
     """Avvia il bot in modalità polling (per sviluppo)"""
-    logger.info("📥 Loading Facebook leaks data...")
-    load_facebook_leaks_data()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     
-    logger.info("📥 Loading addresses/documents data...")
-    load_addresses_documents_data()
-    
-    application = Application.builder().token(BOT_TOKEN).build()
-    
-    # Setup bot handlers
-    asyncio.run(setup_bot(application))
+    application = loop.run_until_complete(setup_bot())
     
     logger.info("🏠 Avvio bot in modalità sviluppo (polling)")
     application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 def start_webhook():
     """Avvia il bot in modalità webhook (per Render)"""
-    logger.info("📥 Loading Facebook leaks data...")
-    load_facebook_leaks_data()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     
-    logger.info("📥 Loading addresses/documents data...")
-    load_addresses_documents_data()
-    
-    application = Application.builder().token(BOT_TOKEN).build()
-    
-    # Setup bot handlers
-    asyncio.run(setup_bot(application))
+    application = loop.run_until_complete(setup_bot())
     
     # Configura webhook per Render
-    port = int(os.environ.get('PORT', 10000))
     webhook_url = os.environ.get('WEBHOOK_URL')
     
     if not webhook_url:
         logger.error("❌ WEBHOOK_URL non configurata per Render")
         sys.exit(1)
     
+    # Rimuovi la porta dal webhook_url
+    webhook_url = webhook_url.rstrip('/')
+    
     logger.info(f"🚀 Avvio bot su Render con webhook: {webhook_url}")
     
-    # Avvia webhook
+    # Avvia webhook - SENZA specificare la porta qui
     application.run_webhook(
         listen="0.0.0.0",
-        port=port,
+        port=10000,  # Usa una porta interna, Render gestirà il routing
         url_path=BOT_TOKEN,
         webhook_url=f"{webhook_url}/{BOT_TOKEN}",
         drop_pending_updates=True
     )
 
-def start_flask():
-    """Avvia il server Flask per Render (se necessario)"""
-    port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port)
-
 if __name__ == '__main__':
-    # Controlla se siamo su Render (con variabile PORT)
-    if os.environ.get('RENDER') or os.environ.get('PORT'):
-        # Usa threading per avviare il bot e Flask insieme
-        import threading
-        
-        # Avvia il bot in un thread separato
-        bot_thread = threading.Thread(target=start_webhook, daemon=True)
-        bot_thread.start()
-        
-        # Avvia Flask nel thread principale
-        start_flask()
+    # Controlla se siamo su Render
+    if os.environ.get('RENDER'):
+        logger.info("🎯 Modalità Render attivata")
+        start_webhook()
     else:
         # Modalità sviluppo: solo polling
         start_polling()
