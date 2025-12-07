@@ -3773,7 +3773,6 @@ def main():
             webhook_url=f"{webhook_url}/{BOT_TOKEN}",
             drop_pending_updates=True
         )
-    else:
         # Avvio locale con polling
     logger.info
     application.run_polling(
