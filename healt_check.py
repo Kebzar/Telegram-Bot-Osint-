@@ -1,3 +1,4 @@
+# health_check.py - Mantieni per compatibilità
 from http.server import BaseHTTPRequestHandler
 from http import HTTPStatus
 
