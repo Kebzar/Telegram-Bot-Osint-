@@ -3707,22 +3707,26 @@ def load_addresses_documents_data():
 
 # ==================== MAIN ====================
 
-
 def main():
     """Funzione principale"""
+    
+    # Verifica che il token sia configurato
+    if BOT_TOKEN == 'YOUR_BOT_TOKEN_HERE':
+        logger.error("❌ BOT_TOKEN non configurato! Configura la variabile d'ambiente TELEGRAM_BOT_TOKEN")
+        sys.exit(1)
     
     # Carica dati Facebook leaks all'avvio
     logger.info("📥 Loading Facebook leaks data...")
     load_facebook_leaks_data()
     
-    # NUOVO: Carica dati documenti e indirizzi
+    # Carica dati documenti e indirizzi
     logger.info("📥 Loading addresses/documents data...")
     load_addresses_documents_data()
     
     # Crea bot
     bot = LeakosintBot()
     
-    # Crea applicazione - MODIFICATO PER RENDER
+    # Crea applicazione
     application = Application.builder().token(BOT_TOKEN).build()
     
     # Handler comandi
@@ -3753,30 +3757,6 @@ def main():
     # Handler per messaggi di testo (ricerche normali)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message))
     
-    # MODIFICA PER RENDER - Avvia webhook invece di polling
-    if os.environ.get('RENDER'):
-        # Configurazione per Render
-        port = int(os.environ.get('PORT', 10000))
-        webhook_url = os.environ.get('WEBHOOK_URL')
-        
-        if not webhook_url:
-            logger.error("❌ WEBHOOK_URL non configurata per Render")
-            sys.exit(1)
-            
-        logger.info(f"🚀 Avvio bot su Render con webhook: {webhook_url}")
-        
-        # Avvia webhook
-        application.run_webhook(
-            listen="0.0.0.0",
-            port=port,
-            url_path=BOT_TOKEN,
-            webhook_url=f"{webhook_url}/{BOT_TOKEN}",
-            drop_pending_updates=True
-        )
-        # Avvio locale con polling
+    # Avvio in modalità polling
     logger.info
-    application.run_polling(
-        allowed_updates=Update.ALL_TYPES,
-        drop_pending_updates=True,
-        close_loop=False
-    )
+    application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
