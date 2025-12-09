@@ -68,6 +68,8 @@ FACEBOOK_GRAPH_API_KEY = os.environ.get('FACEBOOK_GRAPH_API_KEY', '')
 FACEBOOK_SEARCH_TOKEN = os.environ.get('FACEBOOK_SEARCH_TOKEN', '')
 SOCIALSEARCH_API_KEY = os.environ.get('SOCIALSEARCH_API_KEY', '')
 FBSCRAPER_API_KEY = os.environ.get('FBSCRAPER_API_KEY', '')
+
+# ==================== API OSINT POTENZIATE ====================
 WHATSMYNAME_API_URL = "https://api.whatsmyname.app/v0"
 INSTANTUSERNAME_API = "https://api.instantusername.com/v1"
 NAMEAPI_KEY = os.environ.get('NAMEAPI_KEY', '')
@@ -588,223 +590,222 @@ class LeakSearchAPI:
         return {'found': len(results) > 0, 'results': results, 'count': len(results)}
     
     async def search_username(self, username: str) -> Dict:
-    """Ricerca username su social media e data breach - POTENZIATO CON API OSINT"""
-    social_results = []
-    breach_results = []
-    
-    # ============ API WHATSMYNAME (GRATIS, SENZA KEY) ============
-    try:
-        whatsmyname_url = f"{WHATSMYNAME_API_URL}/identities/{quote_plus(username)}"
-        response = self.session.get(whatsmyname_url, timeout=10)
-        if response.status_code == 200:
-            data = response.json()
-            if data.get('sites'):
-                for site in data['sites'][:20]:  # Limita a 20 siti
-                    if site.get('status') == 'claimed':
-                        social_results.append({
-                            'platform': f"🌐 {site.get('name', 'Unknown')}",
-                            'url': site.get('url', ''),
-                            'exists': True,
-                            'source': 'Whatsmyname API',
-                            'claimed': True
-                        })
-    except Exception as e:
-        logger.error(f"Whatsmyname API error: {e}")
-    
-    # ============ API INSTANTUSERNAME (GRATIS) ============
-    try:
-        instant_url = f"{INSTANTUSERNAME_API}/check/{quote_plus(username)}"
-        response = self.session.get(instant_url, timeout=5)
-        if response.status_code == 200:
-            data = response.json()
-            for platform, info in data.get('services', {}).items():
-                if info.get('available') == False:  # False = username TAKEN
-                    social_results.append({
-                        'platform': f"📱 {platform}",
-                        'url': f"https://{platform}.com/{username}",
-                        'exists': True,
-                        'source': 'InstantUsername API',
-                        'claimed': True
-                    })
-    except Exception as e:
-        logger.error(f"InstantUsername error: {e}")
-    
-    # ============ API NAMEAPI (SE C'È API KEY) ============
-    if NAMEAPI_KEY:
+        """Ricerca username su social media e data breach - POTENZIATO CON API OSINT"""
+        social_results = []
+        breach_results = []
+        
+        # ============ API WHATSMYNAME (GRATIS, SENZA KEY) ============
         try:
-            nameapi_url = f"https://api.nameapi.org/rest/v5.3/username/search"
-            params = {
-                'apiKey': NAMEAPI_KEY,
-                'username': username,
-                'context': 'social'
-            }
-            response = self.session.get(nameapi_url, params=params, timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                if data.get('matches'):
-                    for match in data['matches'][:10]:
-                        if match.get('available') == False:
-                            social_results.append({
-                                'platform': f"🔍 {match.get('service', 'Unknown')}",
-                                'url': match.get('url', f"https://{match.get('service')}.com/{username}"),
-                                'exists': True,
-                                'source': 'NameAPI',
-                                'claimed': True
-                            })
-        except Exception as e:
-            logger.error(f"NameAPI error: {e}")
-    
-    # ============ API SOCIAL-SEARCHER (SE C'È API KEY) ============
-    if SOCIAL_SEARCHER_KEY:
-        try:
-            social_url = "https://api.social-searcher.com/v2/search"
-            params = {
-                'q': username,
-                'network': 'web',
-                'type': 'username',
-                'key': SOCIAL_SEARCHER_KEY,
-                'limit': 15
-            }
-            response = self.session.get(social_url, params=params, timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                if data.get('posts'):
-                    unique_platforms = set()
-                    for post in data['posts'][:10]:
-                        if post.get('network'):
-                            platform = post['network'].capitalize()
-                            if platform not in unique_platforms:
-                                unique_platforms.add(platform)
-                                social_results.append({
-                                    'platform': f"📢 {platform}",
-                                    'url': post.get('url', ''),
-                                    'exists': True,
-                                    'source': 'Social-Searcher API',
-                                    'mentions': post.get('count', 1)
-                                })
-        except Exception as e:
-            logger.error(f"Social-Searcher error: {e}")
-    
-    # ============ CONTROLLI MANUALI (BACKUP) ============
-    social_platforms = [
-        ('📸 Instagram', f'https://instagram.com/{username}'),
-        ('📘 Facebook', f'https://facebook.com/{username}'),
-        ('🐦 Twitter', f'https://twitter.com/{username}'),
-        ('💻 GitHub', f'https://github.com/{username}'),
-        ('👽 Reddit', f'https://reddit.com/user/{username}'),
-        ('📱 Telegram', f'https://t.me/{username}'),
-        ('🔵 VKontakte', f'https://vk.com/{username}'),
-        ('🎥 TikTok', f'https://tiktok.com/@{username}'),
-        ('💼 LinkedIn', f'https://linkedin.com/in/{username}'),
-        ('📌 Pinterest', f'https://pinterest.com/{username}')
-    ]
-    
-    # Evita duplicati: controlla se la piattaforma è già stata trovata
-    existing_platforms = [r['platform'] for r in social_results]
-    
-    for platform, url in social_platforms:
-        if platform in existing_platforms:
-            continue
-            
-        try:
-            response = self.session.get(url, timeout=3, allow_redirects=False)
-            if response.status_code in [200, 301, 302]:
-                social_results.append({
-                    'platform': platform,
-                    'url': url,
-                    'exists': True,
-                    'source': 'Direct check'
-                })
-        except:
-            continue
-    
-    # ============ DATA BREACH CHECK (ESISTENTE) ============
-    if DEHASHED_API_KEY:
-        try:
-            auth = base64.b64encode(f"{DEHASHED_EMAIL}:{DEHASHED_API_KEY}".encode()).decode()
-            headers = {'Authorization': f'Basic {auth}'}
-            response = self.session.get(
-                f'https://api.dehashed.com/search?query={quote_plus(username)}',
-                headers=headers, timeout=15
-            )
-            if response.status_code == 200:
-                data = response.json()
-                if data.get('entries'):
-                    for entry in data['entries'][:10]:
-                        breach_results.append({
-                            'source': 'Dehashed',
-                            'username': entry.get('username'),
-                            'email': entry.get('email'),
-                            'password': entry.get('password'),
-                            'date': entry.get('obtained')
-                        })
-        except Exception as e:
-            logger.error(f"Dehashed username error: {e}")
-    
-    # Rimuovi duplicati basati su URL
-    unique_results = []
-    seen_urls = set()
-    for result in social_results:
-        if result['url'] not in seen_urls:
-            seen_urls.add(result['url'])
-            unique_results.append(result)
-    
-    return {
-        'social': unique_results,
-        'breach': breach_results,
-        'social_count': len(unique_results),
-        'breach_count': len(breach_results),
-        'api_sources': list(set([r.get('source', 'Unknown') for r in unique_results]))
-    }
-
-       # Aggiungi DOPO il metodo search_username esistente
-    async def search_username_advanced(self, username: str) -> Dict:
-      """Ricerca avanzata username con tutte le API disponibili"""
-       all_results = {
-           'whatsmyname': [],
-           'instantusername': [],
-           'manual': [],
-           'breach': [],
-           'variants': []
-    }
-    
-    # 1. Whatsmyname (completo)
-    try:
-        response = self.session.get(
-            f"https://api.whatsmyname.app/v0/identities/{quote_plus(username)}",
-            timeout=15
-        )
-        if response.status_code == 200:
-            data = response.json()
-            all_results['whatsmyname'] = data.get('sites', [])
-    except:
-        pass
-    
-    # 2. Ricerca varianti (username simili)
-    username_lower = username.lower()
-    common_variants = [
-        username_lower,
-        username_lower + "123",
-        username_lower + "_",
-        "real" + username_lower,
-        username_lower + "official"
-    ]
-    
-    for variant in common_variants[:3]:
-        try:
-            variant_url = f"https://api.whatsmyname.app/v0/identities/{quote_plus(variant)}"
-            response = self.session.get(variant_url, timeout=5)
+            whatsmyname_url = f"{WHATSMYNAME_API_URL}/identities/{quote_plus(username)}"
+            response = self.session.get(whatsmyname_url, timeout=10)
             if response.status_code == 200:
                 data = response.json()
                 if data.get('sites'):
-                    all_results['variants'].append({
-                        'variant': variant,
-                        'sites': data['sites'][:5]
+                    for site in data['sites'][:20]:  # Limita a 20 siti
+                        if site.get('status') == 'claimed':
+                            social_results.append({
+                                'platform': f"🌐 {site.get('name', 'Unknown')}",
+                                'url': site.get('url', ''),
+                                'exists': True,
+                                'source': 'Whatsmyname API',
+                                'claimed': True
+                            })
+        except Exception as e:
+            logger.error(f"Whatsmyname API error: {e}")
+        
+        # ============ API INSTANTUSERNAME (GRATIS) ============
+        try:
+            instant_url = f"{INSTANTUSERNAME_API}/check/{quote_plus(username)}"
+            response = self.session.get(instant_url, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                for platform, info in data.get('services', {}).items():
+                    if info.get('available') == False:  # False = username TAKEN
+                        social_results.append({
+                            'platform': f"📱 {platform}",
+                            'url': f"https://{platform}.com/{username}",
+                            'exists': True,
+                            'source': 'InstantUsername API',
+                            'claimed': True
+                        })
+        except Exception as e:
+            logger.error(f"InstantUsername error: {e}")
+        
+        # ============ API NAMEAPI (SE C'È API KEY) ============
+        if NAMEAPI_KEY:
+            try:
+                nameapi_url = f"https://api.nameapi.org/rest/v5.3/username/search"
+                params = {
+                    'apiKey': NAMEAPI_KEY,
+                    'username': username,
+                    'context': 'social'
+                }
+                response = self.session.get(nameapi_url, params=params, timeout=10)
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get('matches'):
+                        for match in data['matches'][:10]:
+                            if match.get('available') == False:
+                                social_results.append({
+                                    'platform': f"🔍 {match.get('service', 'Unknown')}",
+                                    'url': match.get('url', f"https://{match.get('service')}.com/{username}"),
+                                    'exists': True,
+                                    'source': 'NameAPI',
+                                    'claimed': True
+                                })
+            except Exception as e:
+                logger.error(f"NameAPI error: {e}")
+        
+        # ============ API SOCIAL-SEARCHER (SE C'È API KEY) ============
+        if SOCIAL_SEARCHER_KEY:
+            try:
+                social_url = "https://api.social-searcher.com/v2/search"
+                params = {
+                    'q': username,
+                    'network': 'web',
+                    'type': 'username',
+                    'key': SOCIAL_SEARCHER_KEY,
+                    'limit': 15
+                }
+                response = self.session.get(social_url, params=params, timeout=10)
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get('posts'):
+                        unique_platforms = set()
+                        for post in data['posts'][:10]:
+                            if post.get('network'):
+                                platform = post['network'].capitalize()
+                                if platform not in unique_platforms:
+                                    unique_platforms.add(platform)
+                                    social_results.append({
+                                        'platform': f"📢 {platform}",
+                                        'url': post.get('url', ''),
+                                        'exists': True,
+                                        'source': 'Social-Searcher API',
+                                        'mentions': post.get('count', 1)
+                                    })
+            except Exception as e:
+                logger.error(f"Social-Searcher error: {e}")
+        
+        # ============ CONTROLLI MANUALI (BACKUP) ============
+        social_platforms = [
+            ('📸 Instagram', f'https://instagram.com/{username}'),
+            ('📘 Facebook', f'https://facebook.com/{username}'),
+            ('🐦 Twitter', f'https://twitter.com/{username}'),
+            ('💻 GitHub', f'https://github.com/{username}'),
+            ('👽 Reddit', f'https://reddit.com/user/{username}'),
+            ('📱 Telegram', f'https://t.me/{username}'),
+            ('🔵 VKontakte', f'https://vk.com/{username}'),
+            ('🎥 TikTok', f'https://tiktok.com/@{username}'),
+            ('💼 LinkedIn', f'https://linkedin.com/in/{username}'),
+            ('📌 Pinterest', f'https://pinterest.com/{username}')
+        ]
+        
+        # Evita duplicati: controlla se la piattaforma è già stata trovata
+        existing_platforms = [r['platform'] for r in social_results]
+        
+        for platform, url in social_platforms:
+            if platform in existing_platforms:
+                continue
+                
+            try:
+                response = self.session.get(url, timeout=3, allow_redirects=False)
+                if response.status_code in [200, 301, 302]:
+                    social_results.append({
+                        'platform': platform,
+                        'url': url,
+                        'exists': True,
+                        'source': 'Direct check'
                     })
-        except:
-            continue
+            except:
+                continue
+        
+        # ============ DATA BREACH CHECK (ESISTENTE) ============
+        if DEHASHED_API_KEY:
+            try:
+                auth = base64.b64encode(f"{DEHASHED_EMAIL}:{DEHASHED_API_KEY}".encode()).decode()
+                headers = {'Authorization': f'Basic {auth}'}
+                response = self.session.get(
+                    f'https://api.dehashed.com/search?query={quote_plus(username)}',
+                    headers=headers, timeout=15
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get('entries'):
+                        for entry in data['entries'][:10]:
+                            breach_results.append({
+                                'source': 'Dehashed',
+                                'username': entry.get('username'),
+                                'email': entry.get('email'),
+                                'password': entry.get('password'),
+                                'date': entry.get('obtained')
+                            })
+            except Exception as e:
+                logger.error(f"Dehashed username error: {e}")
+        
+        # Rimuovi duplicati basati su URL
+        unique_results = []
+        seen_urls = set()
+        for result in social_results:
+            if result['url'] not in seen_urls:
+                seen_urls.add(result['url'])
+                unique_results.append(result)
+        
+        return {
+            'social': unique_results,
+            'breach': breach_results,
+            'social_count': len(unique_results),
+            'breach_count': len(breach_results),
+            'api_sources': list(set([r.get('source', 'Unknown') for r in unique_results]))
+        }
     
-    return all_results
+    async def search_username_advanced(self, username: str) -> Dict:
+        """Ricerca avanzata username con tutte le API disponibili"""
+        all_results = {
+            'whatsmyname': [],
+            'instantusername': [],
+            'manual': [],
+            'breach': [],
+            'variants': []
+        }
+        
+        # 1. Whatsmyname (completo)
+        try:
+            response = self.session.get(
+                f"https://api.whatsmyname.app/v0/identities/{quote_plus(username)}",
+                timeout=15
+            )
+            if response.status_code == 200:
+                data = response.json()
+                all_results['whatsmyname'] = data.get('sites', [])
+        except:
+            pass
+        
+        # 2. Ricerca varianti (username simili)
+        username_lower = username.lower()
+        common_variants = [
+            username_lower,
+            username_lower + "123",
+            username_lower + "_",
+            "real" + username_lower,
+            username_lower + "official"
+        ]
+        
+        for variant in common_variants[:3]:
+            try:
+                variant_url = f"https://api.whatsmyname.app/v0/identities/{quote_plus(variant)}"
+                response = self.session.get(variant_url, timeout=5)
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get('sites'):
+                        all_results['variants'].append({
+                            'variant': variant,
+                            'sites': data['sites'][:5]
+                        })
+            except:
+                continue
+        
+        return all_results
     
     async def search_name(self, name: str) -> Dict:
         """Ricerca per nome e cognome"""
@@ -1490,7 +1491,7 @@ Trova ciò che nascondono🕵🏻‍♂️
         result = c.fetchone()
         if result and result[0]:
             try:
-                dt = datetime.strptime(result[0], '%Y-%m-%d %H:%M:%S')
+                dt = datetime.strptime(result[0], '%Y-%m-d %H:%M:%S')
                 return dt.strftime('%d/%m/%Y %H:%M')
             except:
                 return result[0]
@@ -2398,74 +2399,74 @@ Errore: {str(e)[:100]}
                 await update.message.reply_text(part)
     
     async def search_social_exact(self, update: Update, msg, username: str, user_id: int, data_italiana: str):
-    """Ricerca username - Formato esatto con API potenziate"""
-    # PRIMA usa le nuove API
-    search_results = await self.api.search_username(username)
-    # POI ricerca avanzata
-    advanced_results = await self.api.search_username_advanced(username)
-    
-    now = datetime.now()
-    result_text = f"""👥 RICERCA USERNAME AVANZATA
+        """Ricerca username - Formato esatto con API potenziate"""
+        # PRIMA usa le nuove API
+        search_results = await self.api.search_username(username)
+        # POI ricerca avanzata
+        advanced_results = await self.api.search_username_advanced(username)
+        
+        now = datetime.now()
+        result_text = f"""👥 RICERCA USERNAME AVANZATA
 - {username} - Analisi su 300+ piattaforme"""
-    
-    # Statistiche
-    api_sources = search_results.get('api_sources', [])
-    result_text += f"\n\n📊 FONTI UTILIZZATE: {', '.join(api_sources)}"
-    
-    if search_results['social_count'] > 0:
-        result_text += f"\n\n✅ ACCOUNT TROVATI: {search_results['social_count']}"
         
-        # Raggruppa per piattaforma principale
-        platforms = {}
-        for social in search_results['social'][:15]:  # Limita a 15
-            platform = social['platform']
-            if platform not in platforms:
-                platforms[platform] = []
-            platforms[platform].append(social)
+        # Statistiche
+        api_sources = search_results.get('api_sources', [])
+        result_text += f"\n\n📊 FONTI UTILIZZATE: {', '.join(api_sources)}"
         
-        for platform, accounts in list(platforms.items())[:10]:
-            result_text += f"\n\n{platform}:"
-            for account in accounts[:2]:
-                result_text += f"\n  🔗 {account['url']}"
-                if account.get('source'):
-                    result_text += f" ({account['source']})"
-    
-    # Varianti trovate
-    if advanced_results.get('variants'):
-        result_text += f"\n\n🔍 VARIANTI TROVATE:"
-        for variant in advanced_results['variants'][:3]:
-            if variant.get('sites'):
-                result_text += f"\n  · {variant['variant']}: {len(variant['sites'])} siti"
-    
-    if search_results['breach_count'] > 0:
-        result_text += f"\n\n🔓 DATA BREACH TROVATI: {search_results['breach_count']}"
-        for breach in search_results['breach'][:3]:
-            result_text += f"\n  - {breach['source']}"
-            if breach.get('email'):
-                result_text += f"\n    📧 Email: {breach['email']}"
-            if breach.get('password'):
-                result_text += f"\n    🔐 Password: {breach['password'][:15]}..."
-    
-    if search_results['social_count'] == 0 and search_results['breach_count'] == 0:
-        result_text += f"\n\n❌ NESSUN RISULTATO"
-        result_text += f"\n👤 Username non trovato su nessuna piattaforma conosciuta."
-        result_text += f"\n\n💡 PROVA CON:"
-        result_text += f"\n  · Varianti: {username}123, real{username}"
-        result_text += f"\n  · Nome completo: se contiene spazi"
-        result_text += f"\n  · Email: se è un indirizzo email"
-    
-    result_text += f"\n\n💰 Crediti usati: 2.0"
-    result_text += f"\n💳 Saldo: {self.get_user_balance(user_id):.1f}"
-    result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
-    result_text += f"\n---\n{data_italiana}"
-    
-    try:
-        await msg.edit_text(result_text)
-    except:
-        await msg.delete()
-        parts = [result_text[i:i+4000] for i in range(0, len(result_text), 4000)]
-        for part in parts:
-            await update.message.reply_text(part)
+        if search_results['social_count'] > 0:
+            result_text += f"\n\n✅ ACCOUNT TROVATI: {search_results['social_count']}"
+            
+            # Raggruppa per piattaforma principale
+            platforms = {}
+            for social in search_results['social'][:15]:  # Limita a 15
+                platform = social['platform']
+                if platform not in platforms:
+                    platforms[platform] = []
+                platforms[platform].append(social)
+            
+            for platform, accounts in list(platforms.items())[:10]:
+                result_text += f"\n\n{platform}:"
+                for account in accounts[:2]:
+                    result_text += f"\n  🔗 {account['url']}"
+                    if account.get('source'):
+                        result_text += f" ({account['source']})"
+        
+        # Varianti trovate
+        if advanced_results.get('variants'):
+            result_text += f"\n\n🔍 VARIANTI TROVATE:"
+            for variant in advanced_results['variants'][:3]:
+                if variant.get('sites'):
+                    result_text += f"\n  · {variant['variant']}: {len(variant['sites'])} siti"
+        
+        if search_results['breach_count'] > 0:
+            result_text += f"\n\n🔓 DATA BREACH TROVATI: {search_results['breach_count']}"
+            for breach in search_results['breach'][:3]:
+                result_text += f"\n  - {breach['source']}"
+                if breach.get('email'):
+                    result_text += f"\n    📧 Email: {breach['email']}"
+                if breach.get('password'):
+                    result_text += f"\n    🔐 Password: {breach['password'][:15]}..."
+        
+        if search_results['social_count'] == 0 and search_results['breach_count'] == 0:
+            result_text += f"\n\n❌ NESSUN RISULTATO"
+            result_text += f"\n👤 Username non trovato su nessuna piattaforma conosciuta."
+            result_text += f"\n\n💡 PROVA CON:"
+            result_text += f"\n  · Varianti: {username}123, real{username}"
+            result_text += f"\n  · Nome completo: se contiene spazi"
+            result_text += f"\n  · Email: se è un indirizzo email"
+        
+        result_text += f"\n\n💰 Crediti usati: 2.0"
+        result_text += f"\n💳 Saldo: {self.get_user_balance(user_id):.1f}"
+        result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
+        result_text += f"\n---\n{data_italiana}"
+        
+        try:
+            await msg.edit_text(result_text)
+        except:
+            await msg.delete()
+            parts = [result_text[i:i+4000] for i in range(0, len(result_text), 4000)]
+            for part in parts:
+                await update.message.reply_text(part)
     
     async def search_ip_exact(self, update: Update, msg, ip: str, user_id: int, data_italiana: str):
         """Ricerca IP - Formato esatto"""
@@ -3567,44 +3568,6 @@ def index():
 @app.route('/health')
 def health():
     return 'OK', 200
-# ==================== AVVIO BOT ====================
-
-async def setup_bot():
-    """Configura il bot con tutti gli handler"""
-    logger.info("📥 Loading Facebook leaks data...")
-    load_facebook_leaks_data()
-    
-    logger.info("📥 Loading addresses/documents data...")
-    load_addresses_documents_data()
-    
-    application = Application.builder().token(BOT_TOKEN).build()
-    
-    # Setup bot handlers
-    bot = LeakosintBot()
-    
-    # Aggiungi handler
-    application.add_handler(CommandHandler("start", bot.start))
-    application.add_handler(CommandHandler("menu", bot.menu_completo))
-    application.add_handler(CommandHandler("balance", bot.balance_command))
-    application.add_handler(CommandHandler("buy", bot.buy_command))
-    application.add_handler(CommandHandler("admin", bot.admin_panel))
-    application.add_handler(CommandHandler("addcredits", bot.addcredits_command))
-    application.add_handler(CommandHandler("help", bot.help_command))
-    application.add_handler(CommandHandler("utf8", bot.utf8_command))
-    
-    application.add_handler(CallbackQueryHandler(bot.handle_button_callback))
-    
-    application.add_handler(MessageHandler(
-        filters.Regex(r'(?i)(telegram|instagram|facebook|vk|tg|ig|fb|vkontakte)') & ~filters.COMMAND,
-        bot.handle_social_search
-    ))
-    
-    application.add_handler(MessageHandler(
-        filters.Document.ALL & ~filters.COMMAND,
-        bot.handle_document
-    ))
-    
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message))
 
 # ==================== AVVIO BOT ====================
 
