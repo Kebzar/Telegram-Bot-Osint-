@@ -70,7 +70,7 @@ SOCIALSEARCH_API_KEY = os.environ.get('SOCIALSEARCH_API_KEY', '')
 FBSCRAPER_API_KEY = os.environ.get('FBSCRAPER_API_KEY', '')
 
 # ==================== API OSINT POTENZIATE ====================
-WHATSMYNAME_API_URL = "https://whatsmyname.app/"
+WHATSMYNAME_API_URL = "https://api.whatsmyname.app/v0"
 INSTANTUSERNAME_API = "https://api.instantusername.com/v1"
 NAMEAPI_KEY = os.environ.get('NAMEAPI_KEY', '')
 SOCIAL_SEARCHER_KEY = os.environ.get('SOCIAL_SEARCHER_KEY', '')
@@ -772,7 +772,7 @@ class LeakSearchAPI:
         # 1. Whatsmyname (completo)
         try:
             response = self.session.get(
-                f"https://whatsmyname.app/identities/{quote_plus(username)}",
+                f"https://api.whatsmyname.app/v0/identities/{quote_plus(username)}",
                 timeout=15
             )
             if response.status_code == 200:
