@@ -2398,46 +2398,74 @@ Errore: {str(e)[:100]}
                 await update.message.reply_text(part)
     
     async def search_social_exact(self, update: Update, msg, username: str, user_id: int, data_italiana: str):
-        """Ricerca username - Formato esatto"""
-        search_results = await self.api.search_username(username)
+    """Ricerca username - Formato esatto con API potenziate"""
+    # PRIMA usa le nuove API
+    search_results = await self.api.search_username(username)
+    # POI ricerca avanzata
+    advanced_results = await self.api.search_username_advanced(username)
+    
+    now = datetime.now()
+    result_text = f"""👥 RICERCA USERNAME AVANZATA
+- {username} - Analisi su 300+ piattaforme"""
+    
+    # Statistiche
+    api_sources = search_results.get('api_sources', [])
+    result_text += f"\n\n📊 FONTI UTILIZZATE: {', '.join(api_sources)}"
+    
+    if search_results['social_count'] > 0:
+        result_text += f"\n\n✅ ACCOUNT TROVATI: {search_results['social_count']}"
         
-        now = datetime.now()
-        result_text = f"""👥 Cerca per username
-- {username} - Cerca l'username"""
+        # Raggruppa per piattaforma principale
+        platforms = {}
+        for social in search_results['social'][:15]:  # Limita a 15
+            platform = social['platform']
+            if platform not in platforms:
+                platforms[platform] = []
+            platforms[platform].append(social)
         
-        if search_results['social_count'] > 0:
-            result_text += f"\n\n✅ ACCOUNT TROVATI: {search_results['social_count']}"
-            
-            for social in search_results['social']:
-                platform = social['platform']
-                result_text += f"\n  - {platform}: {social['url']}"
-        
-        if search_results['breach_count'] > 0:
-            result_text += f"\n\n🔓 DATA BREACH TROVATI: {search_results['breach_count']}"
-            
-            for breach in search_results['breach'][:2]:
-                result_text += f"\n  - {breach['source']}"
-                if breach.get('email'):
-                    result_text += f"\n    📧 Email: {breach['email']}"
-                if breach.get('password'):
-                    result_text += f"\n    🔐 Password: {breach['password']}"
-        
-        if search_results['social_count'] == 0 and search_results['breach_count'] == 0:
-            result_text += f"\n\n❌ NESSUN RISULTATO"
-            result_text += f"\n👤 Username non trovato."
-        
-        result_text += f"\n\n💰 Crediti usati: 2.0"
-        result_text += f"\n💳 Saldo: {self.get_user_balance(user_id):.1f}"
-        result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
-        result_text += f"\n---\n{data_italiana}"
-        
-        try:
-            await msg.edit_text(result_text)
-        except:
-            await msg.delete()
-            parts = [result_text[i:i+4000] for i in range(0, len(result_text), 4000)]
-            for part in parts:
-                await update.message.reply_text(part)
+        for platform, accounts in list(platforms.items())[:10]:
+            result_text += f"\n\n{platform}:"
+            for account in accounts[:2]:
+                result_text += f"\n  🔗 {account['url']}"
+                if account.get('source'):
+                    result_text += f" ({account['source']})"
+    
+    # Varianti trovate
+    if advanced_results.get('variants'):
+        result_text += f"\n\n🔍 VARIANTI TROVATE:"
+        for variant in advanced_results['variants'][:3]:
+            if variant.get('sites'):
+                result_text += f"\n  · {variant['variant']}: {len(variant['sites'])} siti"
+    
+    if search_results['breach_count'] > 0:
+        result_text += f"\n\n🔓 DATA BREACH TROVATI: {search_results['breach_count']}"
+        for breach in search_results['breach'][:3]:
+            result_text += f"\n  - {breach['source']}"
+            if breach.get('email'):
+                result_text += f"\n    📧 Email: {breach['email']}"
+            if breach.get('password'):
+                result_text += f"\n    🔐 Password: {breach['password'][:15]}..."
+    
+    if search_results['social_count'] == 0 and search_results['breach_count'] == 0:
+        result_text += f"\n\n❌ NESSUN RISULTATO"
+        result_text += f"\n👤 Username non trovato su nessuna piattaforma conosciuta."
+        result_text += f"\n\n💡 PROVA CON:"
+        result_text += f"\n  · Varianti: {username}123, real{username}"
+        result_text += f"\n  · Nome completo: se contiene spazi"
+        result_text += f"\n  · Email: se è un indirizzo email"
+    
+    result_text += f"\n\n💰 Crediti usati: 2.0"
+    result_text += f"\n💳 Saldo: {self.get_user_balance(user_id):.1f}"
+    result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
+    result_text += f"\n---\n{data_italiana}"
+    
+    try:
+        await msg.edit_text(result_text)
+    except:
+        await msg.delete()
+        parts = [result_text[i:i+4000] for i in range(0, len(result_text), 4000)]
+        for part in parts:
+            await update.message.reply_text(part)
     
     async def search_ip_exact(self, update: Update, msg, ip: str, user_id: int, data_italiana: str):
         """Ricerca IP - Formato esatto"""
