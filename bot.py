@@ -1572,12 +1572,12 @@ class LeakosintBot:
         user_lang = self.get_user_language(user_id)
         
         keyboard = [
-            [InlineKeyboardButton(translations[user_lang]['search'], callback_data='ricerca')],
-            [InlineKeyboardButton(translations[user_lang]['shop'], callback_data='shop_button')],
-            [InlineKeyboardButton(translations[user_lang]['settings'], callback_data='impostazioni')],
-            [InlineKeyboardButton(translations[user_lang]['menu'], callback_data='menu_button')],
-            [InlineKeyboardButton(translations[user_lang]['help'], callback_data='help_button')],
-            [InlineKeyboardButton(translations[user_lang]['language_btn'], callback_data='language_settings')]
+            [InlineKeyboardButton(translations[user_lang]['🔍search'], callback_data='ricerca')],
+            [InlineKeyboardButton(translations[user_lang]['shop💸'], callback_data='shop_button')],
+            [InlineKeyboardButton(translations[user_lang]['⚙️settings'], callback_data='impostazioni')],
+            [InlineKeyboardButton(translations[user_lang]['📋menu'], callback_data='menu_button')],
+            [InlineKeyboardButton(translations[user_lang]['help❓'], callback_data='help_button')],
+            [InlineKeyboardButton(translations[user_lang]['🌐language_btn'], callback_data='language_settings')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
@@ -1763,7 +1763,7 @@ class LeakosintBot:
         
         keyboard = [
             [InlineKeyboardButton("🌐 Cambia Lingua", callback_data='language_settings')],
-            [InlineKeyboardButton("🔙 Indietro", callback_data='back_to_main')]
+            keyboard = [[InlineKeyboardButton(translations[user_lang]['⬅️back'], callback_data='back_to_main')]]
         ]
         await query.edit_message_text(settings_text, reply_markup=InlineKeyboardMarkup(keyboard))
     
@@ -2345,8 +2345,9 @@ https://www.paypal.me/BotAi36
         
         if not await self.update_balance(user_id, 2.0):
             await update.message.reply_text(
-                "❌ Crediti insufficienti! Usa /buy per acquistare crediti."
+                translations[self.get_user_language(user_id)]['❌insufficient_credits']
             )
+            
             return
         
         mesi = {
@@ -2357,8 +2358,7 @@ https://www.paypal.me/BotAi36
         now = datetime.now()
         data_italiana = f"{now.day} {mesi.get(now.month, 'novembre')}"
         
-        wait_text = f"""🔍 Analisi query composta...
-Componenti rilevati: in elaborazione...
+        wait_text = f"""{translations[self.get_user_language(user_id)]['🔍processing']}
 
 ⏰ {now.hour:02d}:{now.minute:02d}
 
@@ -2403,7 +2403,7 @@ Componenti rilevati: in elaborazione...
             
         except Exception as e:
             logger.error(f"Search error: {e}")
-            error_text = f"""❌ Errore durante la ricerca
+            error_text = f"""{translations[self.get_user_language(user_id)]['❌error']}
 Query: {query}
 Errore: {str(e)[:100]}
 
