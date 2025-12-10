@@ -1704,7 +1704,13 @@ class LeakosintBot:
             
         elif query.data == 'back_from_search':
             await self.show_search_menu(update, context)
+            
+        elif query.data == 'buy_100':
+            await query.answer("Feature in sviluppo - Presto disponibile!", show_alert=True)
     
+        elif query.data == 'buy_200':
+            await query.answer("Feature in sviluppo - Presto disponibile!", show_alert=True)
+
     async def show_settings(self, update: Update, context: CallbackContext):
         """Mostra le impostazioni utente"""
         query = update.callback_query
