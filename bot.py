@@ -75,6 +75,30 @@ INSTANTUSERNAME_API = "https://api.instantusername.com/v1"
 NAMEAPI_KEY = os.environ.get('NAMEAPI_KEY', '')
 SOCIAL_SEARCHER_KEY = os.environ.get('SOCIAL_SEARCHER_KEY', '')
 
+# ==================== SISTEMA LINGUE ====================
+translations = {
+    'it': {
+        'language': 'Italiano 🇮🇹',
+        'main_menu': '# Posso cercare tutto. Inviami la tua richiesta.🔍\n\nTrova ciò che nascondono🕵🏻‍♂️\n\n•🔍 Ricerca\n\n•shop💸\n\n•⚙️ Impostazioni\n\n•📋 Menu\n\n•help❓',
+        'search': '🔍 Ricerca',
+        'shop': 'shop💸',
+        'settings': '⚙️ Impostazioni',
+        'menu': '📋 Menu',
+        'help': 'help❓',
+        'language_btn': '🌐 Lingua'
+    },
+    'en': {
+        'language': 'English 🇬🇧',
+        'main_menu': '# I can search everything. Send me your request.🔍\n\nFind what they hide🕵🏻‍♂️\n\n•🔍 Search\n\n•shop💸\n\n•⚙️ Settings\n\n•📋 Menu\n\n•help❓',
+        'search': '🔍 Search',
+        'shop': 'shop💸',
+        'settings': '⚙️ Settings',
+        'menu': '📋 Menu',
+        'help': 'help❓',
+        'language_btn': '🌐 Language'
+    }
+}
+
 # Database setup
 db_path = os.environ.get('DATABASE_URL', 'leakosint_bot.db')
 if db_path.startswith('postgres://'):
@@ -93,7 +117,8 @@ c.execute('''CREATE TABLE IF NOT EXISTS users (
     searches INTEGER DEFAULT 0,
     registration_date TEXT DEFAULT CURRENT_TIMESTAMP,
     subscription_type TEXT DEFAULT 'free',
-    last_active TEXT DEFAULT CURRENT_TIMESTAMP
+    last_active TEXT DEFAULT CURRENT_TIMESTAMP,
+    language TEXT DEFAULT 'it'
 )''')
 
 c.execute('''CREATE TABLE IF NOT EXISTS searches (
@@ -1408,6 +1433,15 @@ class LeakosintBot:
     def __init__(self):
         self.api = LeakSearchAPI()
     
+    def get_user_language(self, user_id: int) -> str:
+        c.execute('SELECT language FROM users WHERE user_id = ?', (user_id,))
+        result = c.fetchone()
+        return result[0] if result and result[0] else 'it'
+
+    def set_user_language(self, user_id: int, language: str):
+        c.execute('UPDATE users SET language = ? WHERE user_id = ?', (language, user_id))
+        conn.commit()
+    
     async def show_main_menu(self, update: Update, context: CallbackContext):
         """Mostra il menu principale con interfaccia"""
         user = update.effective_user
@@ -1423,32 +1457,20 @@ class LeakosintBot:
         }
         data_italiana = f"{now.day} {mesi.get(now.month, 'novembre')}"
         
+        user_lang = self.get_user_language(user_id)
+        
         keyboard = [
-            [InlineKeyboardButton("🔍 Ricerca", callback_data='ricerca')],
-            [InlineKeyboardButton("shop💸", callback_data='shop_button')],
-            [InlineKeyboardButton("⚙️ Impostazioni", callback_data='impostazioni')],
-            [InlineKeyboardButton("📋 Menu", callback_data='menu_button')],
-            [InlineKeyboardButton("help❓", callback_data='help_button')]
+            [InlineKeyboardButton(translations[user_lang]['search'], callback_data='ricerca')],
+            [InlineKeyboardButton(translations[user_lang]['shop'], callback_data='shop_button')],
+            [InlineKeyboardButton(translations[user_lang]['settings'], callback_data='impostazioni')],
+            [InlineKeyboardButton(translations[user_lang]['menu'], callback_data='menu_button')],
+            [InlineKeyboardButton(translations[user_lang]['help'], callback_data='help_button')],
+            [InlineKeyboardButton(translations[user_lang]['language_btn'], callback_data='language_settings')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        menu_text = f"""# Posso cercare tutto. Inviami la tua richiesta.🔍
-
-⏰ {now.hour:02d}:{now.minute:02d}
-
-Trova ciò che nascondono🕵🏻‍♂️
-
-•🔍 Ricerca
-
-•shop💸
-
-•⚙️ Impostazioni
-
-•📋 Menu
-
-•help❓
-
-{data_italiana}"""
+        menu_text = translations[user_lang]['main_menu']
+        menu_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}\n\n{data_italiana}"
         
         if update.callback_query:
             await update.callback_query.edit_message_text(menu_text, reply_markup=reply_markup)
@@ -1540,13 +1562,6 @@ Trova ciò che nascondono🕵🏻‍♂️
         await query.answer()
         
         user_id = query.from_user.id
-        now = datetime.now()
-        mesi = {
-            1: 'gennaio', 2: 'febbraio', 3: 'marzo', 4: 'aprile',
-            5: 'maggio', 6: 'giugno', 7: 'luglio', 8: 'agosto',
-            9: 'settembre', 10: 'ottobre', 11: 'novembre', 12: 'dicembre'
-        }
-        data_italiana = f"{now.day} {mesi.get(now.month, 'novembre')}"
         
         if query.data == 'ricerca':
             await self.show_search_menu(update, context)
@@ -1555,14 +1570,53 @@ Trova ciò che nascondono🕵🏻‍♂️
             await self.show_shop_interface(update, context)
             
         elif query.data == 'impostazioni':
-            balance = self.get_user_balance(user_id)
-            searches = self.get_user_searches(user_id)
-            reg_date = self.get_registration_date(user_id)
-            last_active = self.get_last_active(user_id)
-            sub_type = self.get_subscription_type(user_id)
-            username = self.get_username(user_id)
+            await self.show_settings(update, context)
             
-            settings_text = f"""⚙️ IMPOSTAZIONI UTENTE
+        elif query.data == 'menu_button':
+            await self.menu_completo(update, context)
+            
+        elif query.data == 'help_button':
+            await self.help_command_from_button(update, context)
+            
+        elif query.data == 'language_settings':
+            await self.show_language_settings(update, context)
+            
+        elif query.data == 'set_lang_it':
+            await self.set_language(update, context, 'it')
+            
+        elif query.data == 'set_lang_en':
+            await self.set_language(update, context, 'en')
+            
+        elif query.data == 'back_to_main':
+            await self.show_main_menu(update, context)
+            
+        elif query.data == 'back_from_search':
+            await self.show_search_menu(update, context)
+    
+    async def show_settings(self, update: Update, context: CallbackContext):
+        """Mostra le impostazioni utente"""
+        query = update.callback_query
+        user_id = query.from_user.id
+        
+        balance = self.get_user_balance(user_id)
+        searches = self.get_user_searches(user_id)
+        reg_date = self.get_registration_date(user_id)
+        last_active = self.get_last_active(user_id)
+        sub_type = self.get_subscription_type(user_id)
+        username = self.get_username(user_id)
+        user_lang = self.get_user_language(user_id)
+        
+        now = datetime.now()
+        mesi = {
+            1: 'gennaio', 2: 'febbraio', 3: 'marzo', 4: 'aprile',
+            5: 'maggio', 6: 'giugno', 7: 'luglio', 8: 'agosto',
+            9: 'settembre', 10: 'ottobre', 11: 'novembre', 12: 'dicembre'
+        }
+        data_italiana = f"{now.day} {mesi.get(now.month, 'novembre')}"
+        
+        lang_text = translations[user_lang]['language'] if user_lang in translations else 'Italiano 🇮🇹'
+        
+        settings_text = f"""⚙️ IMPOSTAZIONI UTENTE
 
 👤 Informazioni Personali:
 🆔 ID Telegram: {user_id}
@@ -1578,7 +1632,7 @@ Trova ciò che nascondono🕵🏻‍♂️
 
 ⚙️ Configurazioni:
 🔔 Notifiche: Attive
-🌐 Lingua: Italiano
+🌐 Lingua: {lang_text}
 💾 Salvataggio ricerche: 30 giorni
 
 📊 Statistiche odierne:
@@ -1588,21 +1642,65 @@ Trova ciò che nascondono🕵🏻‍♂️
 ⏰ {now.hour:02d}:{now.minute:02d}
 
 {data_italiana}"""
-            
-            keyboard = [[InlineKeyboardButton("🔙 Indietro", callback_data='back_to_main')]]
-            await query.edit_message_text(settings_text, reply_markup=InlineKeyboardMarkup(keyboard))
-            
-        elif query.data == 'menu_button':
-            await self.menu_completo(update, context)
-            
-        elif query.data == 'help_button':
-            await self.help_command_from_button(update, context)
-            
-        elif query.data == 'back_to_main':
-            await self.show_main_menu(update, context)
-            
-        elif query.data == 'back_from_search':
-            await self.show_search_menu(update, context)
+        
+        keyboard = [
+            [InlineKeyboardButton("🌐 Cambia Lingua", callback_data='language_settings')],
+            [InlineKeyboardButton("🔙 Indietro", callback_data='back_to_main')]
+        ]
+        await query.edit_message_text(settings_text, reply_markup=InlineKeyboardMarkup(keyboard))
+    
+    async def show_language_settings(self, update: Update, context: CallbackContext):
+        """Mostra le impostazioni della lingua"""
+        user_id = update.effective_user.id
+        current_lang = self.get_user_language(user_id)
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("🇮🇹 Italiano", callback_data='set_lang_it'),
+                InlineKeyboardButton("🇬🇧 English", callback_data='set_lang_en')
+            ],
+            [InlineKeyboardButton("🔙 Indietro", callback_data='impostazioni')]
+        ]
+        
+        text = f"""🌐 IMPOSTAZIONI LINGUA
+
+Lingua attuale: {translations[current_lang]['language']}
+
+Seleziona una lingua:
+🇮🇹 Italiano - Lingua italiana
+🇬🇧 English - English language
+
+Il cambio lingua influenzerà:
+• Testi dei menu
+• Messaggi del bot
+• Istruzioni"""
+
+        if update.callback_query:
+            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+        else:
+            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+    async def set_language(self, update: Update, context: CallbackContext, language: str):
+        """Imposta la lingua per l'utente"""
+        query = update.callback_query
+        await query.answer()
+        
+        user_id = query.from_user.id
+        self.set_user_language(user_id, language)
+        
+        lang_name = 'Italiano' if language == 'it' else 'English'
+        
+        # Mostra conferma nella lingua selezionata
+        if language == 'it':
+            confirm_text = f"✅ Lingua impostata su {lang_name} 🇮🇹\n\nTutti i menu e i messaggi saranno ora in italiano."
+        else:
+            confirm_text = f"✅ Language set to {lang_name} 🇬🇧\n\nAll menus and messages will now be in English."
+        
+        await query.edit_message_text(confirm_text)
+        
+        # Ritorna al menu principale dopo 2 secondi
+        await asyncio.sleep(2)
+        await self.show_main_menu(update, context)
     
     async def help_command_from_button(self, update: Update, context: CallbackContext):
         """Mostra l'aiuto quando cliccato dal pulsante help"""
@@ -1741,6 +1839,20 @@ Trova ciò che nascondono🕵🏻‍♂️
 · 🔵 100 CREDITI = 8.0 USDT
 · 🟣 200 CREDITI = 15.0 USDT
 
+🔗 INDIRIZZI DI PAGAMENTO:
+━━━━━━━━━━━━━━━━━━━━
+🎯 XRM:
+459uXRXZknoRy3eq9TfZxKZ85jKWCZniBEh2U5GEg9VCYjT6f5U57cNjerJcpw2eF7jSmQwzh6sgmAQEL79HhM3NRmSu6ZT
+
+₿ BTC:
+19rgimxDy1FKW5RvXWPQN4u9eevKySmJTu
+
+Ξ ETH:
+0x2e7edD5154Be461bae0BD9F79473FC54B0eeEE59
+
+💳 PayPal:
+https://www.paypal.me/BotAi36
+
 📊 CONVERSIONE:
 ━━━━━━━━━━━━━━━━━━━━
 💰 2 crediti = 1 ricerca
@@ -1752,19 +1864,11 @@ Trova ciò che nascondono🕵🏻‍♂️
 • +100 crediti: 20% sconto
 • +200 crediti: 25% sconto
 
-🔗 PAGAMENTO CRYPTO:
-━━━━━━━━━━━━━━━━━━━━
-🌐 Rete: TRC20 (Tron) o BEP20 (BSC)
-💰 Accettiamo: USDT, USDC, BTC, ETH
-🔄 Conversione automatica
-
 📝 COME ACQUISTARE:
 ━━━━━━━━━━━━━━━━━━━━
 1. Scegli il pacchetto
-2. Invia crypto all'indirizzo:
-   🔹 TRC20: TPRg6fVqZ4qJq8XqXqXqXqXqXqXqXqXqXq
-   🔸 BEP20: 0x9a8f9c8d7e6f5a4b3c2d1e0f
-3. Invia TX Hash / Screenshot
+2. Invia crypto a uno degli indirizzi sopra
+3. Invia TX Hash / Screenshot a @Zerofilter00
 4. Ricevi crediti in 5-15 minuti
 
 ⚠️ AVVERTENZE:
@@ -1772,7 +1876,7 @@ Trova ciò che nascondono🕵🏻‍♂️
 • Solo pagamenti crypto
 • Nessun rimborso
 • Verifica indirizzo
-• Minimo 10 USDT
+• Minimo 10 USDT equivalente
 
 📞 SUPPORTO:
 ━━━━━━━━━━━━━━━━━━━━
