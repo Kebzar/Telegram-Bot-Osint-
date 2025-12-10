@@ -85,7 +85,63 @@ translations = {
         'settings': '⚙️ Impostazioni',
         'menu': '📋 Menu',
         'help': 'help❓',
-        'language_btn': '🌐 Lingua'
+        'language_btn': '🌐 Lingua',
+        'back': '🔙 Indietro',
+        'buy_20': '💳 Acquista 20 crediti',
+        'buy_50': '💳 Acquista 50 crediti',
+        'buy_100': '💳 Acquista 100 crediti',
+        'buy_200': '💳 Acquista 200 crediti',
+        
+        # Testi di ricerca
+        'search_menu_title': '🔍 Puoi cercare i seguenti dati:',
+        'search_email': '📧 Cerca per posta',
+        'search_name': '👤 Cerca per nome o nick',
+        'search_phone': '📱 Cerca per numero di telefono',
+        'search_document': '📄 Cerca per documento',
+        'search_home_address': '🏠 Cerca per indirizzo di casa',
+        'search_work_address': '🏢 Cerca per indirizzo lavorativo',
+        'search_password': '🔐 Ricerca password',
+        'search_telegram': '📱 Cerca un account Telegram',
+        'search_facebook': '📘 Cerca l\'account Facebook',
+        'search_vk': '🔵 Cerca l\'account VKontakte',
+        'search_instagram': '📸 Cerca account Instagram',
+        'search_ip': '🌐 Cerca tramite IP',
+        'search_mass': '📋 Ricerca di massa: /utf8 per istruzioni',
+        'search_composite': '📝 Le richieste composite in tutti i formati sono supportate:',
+        
+        # Impostazioni
+        'settings_title': '⚙️ IMPOSTAZIONI UTENTE',
+        'personal_info': '👤 Informazioni Personali:',
+        'credit_system': '💳 Sistema Credit:',
+        'configurations': '⚙️ Configurazioni:',
+        'today_stats': '📊 Statistiche odierne:',
+        
+        # Shop
+        'shop_title': 'shop💸 - ACQUISTA CREDITI CON CRYPTO',
+        'credit_packages': '💎 PACCHETTI CREDITI:',
+        'payment_addresses': '🔗 INDIRIZZI DI PAGAMENTO:',
+        'conversion': '📊 CONVERSIONE:',
+        'discounts': '🎁 SCONTI:',
+        'how_to_buy': '📝 COME ACQUISTARE:',
+        'warnings': '⚠️ AVVERTENZE:',
+        'support': '📞 SUPPORTO:',
+        
+        # Menu completo
+        'menu_title': '📝 RICERCHE COMPOSTE SUPPORTATE:',
+        'composite_examples': '📌 Esempi di ricerche composte:',
+        'combine_what': '🔍 PUOI COMBINARE:',
+        'mass_search': '📋 RICERCA DI MASSA:',
+        
+        # Bot risposte
+        'processing': '🔍 Analisi in corso...',
+        'no_results': '❌ NESSUN RISULTATO',
+        'credits_used': '💰 Crediti usati:',
+        'balance': '💳 Saldo:',
+        'insufficient_credits': '❌ Crediti insufficienti! Usa /buy per acquistare crediti.',
+        'error': '❌ Errore durante la ricerca',
+        
+        # Conferma cambio lingua
+        'lang_changed': '✅ Lingua impostata su {lang_name} 🇮🇹\n\nTutti i menu e i messaggi saranno ora in italiano.'
     },
     'en': {
         'language': 'English 🇬🇧',
@@ -95,7 +151,63 @@ translations = {
         'settings': '⚙️ Settings',
         'menu': '📋 Menu',
         'help': 'help❓',
-        'language_btn': '🌐 Language'
+        'language_btn': '🌐 Language',
+        'back': '🔙 Back',
+        'buy_20': '💳 Buy 20 credits',
+        'buy_50': '💳 Buy 50 credits',
+        'buy_100': '💳 Buy 100 credits',
+        'buy_200': '💳 Buy 200 credits',
+        
+        # Testi di ricerca
+        'search_menu_title': '🔍 You can search for the following data:',
+        'search_email': '📧 Search by email',
+        'search_name': '👤 Search by name or nickname',
+        'search_phone': '📱 Search by phone number',
+        'search_document': '📄 Search by document',
+        'search_home_address': '🏠 Search by home address',
+        'search_work_address': '🏢 Search by work address',
+        'search_password': '🔐 Password search',
+        'search_telegram': '📱 Search Telegram account',
+        'search_facebook': '📘 Search Facebook account',
+        'search_vk': '🔵 Search VKontakte account',
+        'search_instagram': '📸 Search Instagram account',
+        'search_ip': '🌐 Search by IP',
+        'search_mass': '📋 Mass search: /utf8 for instructions',
+        'search_composite': '📝 Composite requests in all formats are supported:',
+        
+        # Impostazioni
+        'settings_title': '⚙️ USER SETTINGS',
+        'personal_info': '👤 Personal Information:',
+        'credit_system': '💳 Credit System:',
+        'configurations': '⚙️ Configurations:',
+        'today_stats': '📊 Today\'s statistics:',
+        
+        # Shop
+        'shop_title': 'shop💸 - BUY CREDITS WITH CRYPTO',
+        'credit_packages': '💎 CREDIT PACKAGES:',
+        'payment_addresses': '🔗 PAYMENT ADDRESSES:',
+        'conversion': '📊 CONVERSION:',
+        'discounts': '🎁 DISCOUNTS:',
+        'how_to_buy': '📝 HOW TO BUY:',
+        'warnings': '⚠️ WARNINGS:',
+        'support': '📞 SUPPORT:',
+        
+        # Menu completo
+        'menu_title': '📝 COMPOSITE SEARCHES SUPPORTED:',
+        'composite_examples': '📌 Composite search examples:',
+        'combine_what': '🔍 YOU CAN COMBINE:',
+        'mass_search': '📋 MASS SEARCH:',
+        
+        # Bot risposte
+        'processing': '🔍 Analysis in progress...',
+        'no_results': '❌ NO RESULTS',
+        'credits_used': '💰 Credits used:',
+        'balance': '💳 Balance:',
+        'insufficient_credits': '❌ Insufficient credits! Use /buy to buy credits.',
+        'error': '❌ Error during search',
+        
+        # Conferma cambio lingua
+        'lang_changed': '✅ Language set to {lang_name} 🇬🇧\n\nAll menus and messages will now be in English.'
     }
 }
 
@@ -118,7 +230,7 @@ c.execute('''CREATE TABLE IF NOT EXISTS users (
     registration_date TEXT DEFAULT CURRENT_TIMESTAMP,
     subscription_type TEXT DEFAULT 'free',
     last_active TEXT DEFAULT CURRENT_TIMESTAMP,
-    language TEXT DEFAULT 'it'
+    language TEXT DEFAULT 'en'
 )''')
 
 c.execute('''CREATE TABLE IF NOT EXISTS searches (
@@ -1436,7 +1548,7 @@ class LeakosintBot:
     def get_user_language(self, user_id: int) -> str:
         c.execute('SELECT language FROM users WHERE user_id = ?', (user_id,))
         result = c.fetchone()
-        return result[0] if result and result[0] else 'it'
+        return result[0] if result and result[0] else 'en'
 
     def set_user_language(self, user_id: int, language: str):
         c.execute('UPDATE users SET language = ? WHERE user_id = ?', (language, user_id))
@@ -1684,20 +1796,16 @@ Il cambio lingua influenzerà:
         """Imposta la lingua per l'utente"""
         query = update.callback_query
         await query.answer()
-        
+    
         user_id = query.from_user.id
         self.set_user_language(user_id, language)
-        
-        lang_name = 'Italiano' if language == 'it' else 'English'
-        
-        # Mostra conferma nella lingua selezionata
-        if language == 'it':
-            confirm_text = f"✅ Lingua impostata su {lang_name} 🇮🇹\n\nTutti i menu e i messaggi saranno ora in italiano."
-        else:
-            confirm_text = f"✅ Language set to {lang_name} 🇬🇧\n\nAll menus and messages will now be in English."
-        
+    
+        # Usa il dizionario di traduzioni per il messaggio
+        lang_name = translations[language]['language']
+        confirm_text = translations[language]['lang_changed'].format(lang_name=lang_name.split()[0])
+    
         await query.edit_message_text(confirm_text)
-        
+    
         # Ritorna al menu principale dopo 2 secondi
         await asyncio.sleep(2)
         await self.show_main_menu(update, context)
@@ -1707,9 +1815,10 @@ Il cambio lingua influenzerà:
         await self.help_command(update, context)
     
     async def show_search_menu(self, update: Update, context: CallbackContext):
-        """Mostra il menu di ricerca"""
+        """Mostra il menu di ricerca tradotto"""
         user = update.effective_user
         user_id = user.id
+        user_lang = self.get_user_language(user_id)
         
         now = datetime.now()
         mesi = {
@@ -1719,7 +1828,8 @@ Il cambio lingua influenzerà:
         }
         data_italiana = f"{now.day} {mesi.get(now.month, 'novembre')}"
         
-        text = f"""🔍 Puoi cercare i seguenti dati:
+        if user_lang == 'it':
+            text = f"""{translations[user_lang]['search_menu_title']}
 
 📧 Cerca per posta
 
@@ -1812,8 +1922,102 @@ Il cambio lingua influenzerà:
 ⏰ {now.hour:02d}:{now.minute:02d}
 
 {data_italiana}"""
+        else:
+            text = f"""{translations[user_lang]['search_menu_title']}
+
+📧 Search by email
+
+· example@gmail.com - Search email
+· example@ - Search without domain consideration
+· @gmail.com - Search specific domains
+
+👤 Search by name or nickname
+
+· Petrov
+· Petrov Maxim
+· Petrov Sergeevich
+· Maxim Sergeevich
+· Petrov Maxim Sergeevich
+· ShadowPlayer228
+
+📱 Search by phone number
+
+· +79002206090
+· 79002206090
+· 89002206090
+
+📄 Search by document
+
+· AA1234567 - Identity Card
+· 123456789 - Tax Code
+· AA12345AA1234 - Passport
+
+🏠 Search by home address
+
+· Via Roma 123, Milano
+· Corso Vittorio Emanuele 45, Roma
+· Piazza del Duomo 1, Firenze
+
+🏢 Search by work address
+
+· Office Via Torino 50, Milano
+· Company Via Milano 10, Roma
+· Headquarters Via Garibaldi 25, Napoli
+
+🔐 Password search
+
+· 123qwe
+
+🚗 Search vehicles
+
+· 0999MY777 - Search vehicles in Russia
+· BO4561AX - Search vehicles with penal code
+· XTA21150053965897 - Search by VIN
+
+📱 Search Telegram account
+
+· Petrov Ivan - Search by name and surname
+· 314159265 - Search by account ID
+· Petivan - Search by username
+
+📘 Search Facebook account
+
+· Petrov Ivan - Search by name
+· 314159265 - Search by account ID
+
+🔵 Search VKontakte account
+
+· Petrov Ivan - Search by name and surname
+· 314159265 - Search by account ID
+
+📸 Search Instagram account
+
+· Petrov Ivan - Search by name and surname
+· 314159265 - Search by account ID
+
+🌐 Search by IP
+
+· 127.0.0.1
+
+📋 Mass search: /utf8 for instructions
+
+📝 Composite requests in all formats are supported:
+
+· Petrov 79002206090
+· Maxim Sergeevich 127.0.0.1
+· Petrov Maxim Sergeevich
+· AA1234567 Via Roma 123
+· Mario Rossi 123456789 Milano
+
+💰 Available credits: {self.get_user_balance(user_id):.1f} 📊Searches performed: {self.get_user_searches(user_id)}
+
+📩 Send me any data to start searching.
+
+⏰ {now.hour:02d}:{now.minute:02d}
+
+{data_italiana}"""
         
-        keyboard = [[InlineKeyboardButton("🔙 Indietro", callback_data='back_to_main')]]
+        keyboard = [[InlineKeyboardButton(translations[user_lang]['back'], callback_data='back_to_main')]]
         
         if update.callback_query:
             await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
@@ -1821,7 +2025,10 @@ Il cambio lingua influenzerà:
             await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
     
     async def show_shop_interface(self, update: Update, context: CallbackContext):
-        """Mostra l'interfaccia di acquisto crediti con crypto"""
+        """Mostra l'interfaccia di acquisto crediti con crypto e fiat"""
+        user_id = update.effective_user.id
+        user_lang = self.get_user_language(user_id)
+        
         now = datetime.now()
         mesi = {
             1: 'gennaio', 2: 'febbraio', 3: 'marzo', 4: 'aprile',
@@ -1830,33 +2037,48 @@ Il cambio lingua influenzerà:
         }
         data_italiana = f"{now.day} {mesi.get(now.month, 'novembre')}"
         
-        text = f"""shop💸 - ACQUISTA CREDITI CON CRYPTO
+        # Tassi di cambio (aggiornabili)
+        usdt_to_eur = 0.85  # 1 USDT = 0.85 EUR
+        btc_to_usdt = 45000  # 1 BTC = 45000 USDT (esempio)
+        eth_to_usdt = 2500   # 1 ETH = 2500 USDT (esempio)
+        xrm_to_usdt = 0.65   # 1 XRM = 0.65 USDT (esempio)
+        
+        # Calcoli per EUR
+        eur_20 = 2.0 * usdt_to_eur
+        eur_50 = 4.5 * usdt_to_eur
+        eur_100 = 8.0 * usdt_to_eur
+        eur_200 = 15.0 * usdt_to_eur
+        
+        # Formatta i prezzi
+        if user_lang == 'it':
+            text = f"""{translations[user_lang]['shop_title']}
 
-💎 PACCHETTI CREDITI:
+{translations[user_lang]['credit_packages']}
 ━━━━━━━━━━━━━━━━━━━━
-· 🟢 20 CREDITI = 2.0 USDT
-· 🟡 50 CREDITI = 4.5 USDT
-· 🔵 100 CREDITI = 8.0 USDT
-· 🟣 200 CREDITI = 15.0 USDT
+· 🟢 20 CREDITI = 2.0 USDT ≈ {eur_20:.2f} EUR
+· 🟡 50 CREDITI = 4.5 USDT ≈ {eur_50:.2f} EUR
+· 🔵 100 CREDITI = 8.0 USDT ≈ {eur_100:.2f} EUR
+· 🟣 200 CREDITI = 15.0 USDT ≈ {eur_200:.2f} EUR
 
-🔗 INDIRIZZI DI PAGAMENTO:
+{translations[user_lang]['payment_addresses']}
 ━━━━━━━━━━━━━━━━━━━━
-🎯 XRM:
-459uXRXZknoRy3eq9TfZxKZ85jKWCZniBEh2U5GEg9VCYjT6f5U57cNjerJcpw2eF7jSmQwzh6sgmAQEL79HhM3NRmSu6ZT
+🎯 XRM (Monero) - 0.65 USDT/XMR:
+`459uXRXZknoRy3eq9TfZxKZ85jKWCZniBEh2U5GEg9VCYjT6f5U57cNjerJcpw2eF7jSmQwzh6sgmAQEL79HhM3NRmSu6ZT`
 
-₿ BTC:
-19rgimxDy1FKW5RvXWPQN4u9eevKySmJTu
+₿ BTC (Bitcoin) - {btc_to_usdt:,.0f} USDT/BTC:
+`19rgimxDy1FKW5RvXWPQN4u9eevKySmJTu`
 
-Ξ ETH:
-0x2e7edD5154Be461bae0BD9F79473FC54B0eeEE59
+Ξ ETH (Ethereum) - {eth_to_usdt:,.0f} USDT/ETH:
+`0x2e7edD5154Be461bae0BD9F79473FC54B0eeEE59`
 
-💳 PayPal:
+💳 PayPal (EUR/USD):
 https://www.paypal.me/BotAi36
 
 📊 CONVERSIONE:
 ━━━━━━━━━━━━━━━━━━━━
 💰 2 crediti = 1 ricerca
-💸 1 credito = 0.1 USDT
+💸 1 credito = 0.1 USDT ≈ {0.1 * usdt_to_eur:.2f} EUR
+🔁 1 USDT = {usdt_to_eur:.2f} EUR (tasso fisso)
 
 🎁 SCONTI:
 ━━━━━━━━━━━━━━━━━━━━
@@ -1873,9 +2095,10 @@ https://www.paypal.me/BotAi36
 
 ⚠️ AVVERTENZE:
 ━━━━━━━━━━━━━━━━━━━━
-• Solo pagamenti crypto
+• Solo pagamenti crypto (XRM, BTC, ETH)
+• PayPal disponibile per EUR/USD
 • Nessun rimborso
-• Verifica indirizzo
+• Verifica indirizzo prima di inviare
 • Minimo 10 USDT equivalente
 
 📞 SUPPORTO:
@@ -1886,11 +2109,72 @@ https://www.paypal.me/BotAi36
 ⏰ {now.hour:02d}:{now.minute:02d}
 
 {data_italiana}"""
+        else:
+            text = f"""{translations[user_lang]['shop_title']}
+
+{translations[user_lang]['credit_packages']}
+━━━━━━━━━━━━━━━━━━━━
+· 🟢 20 CREDITS = 2.0 USDT ≈ {eur_20:.2f} EUR
+· 🟡 50 CREDITS = 4.5 USDT ≈ {eur_50:.2f} EUR
+· 🔵 100 CREDITS = 8.0 USDT ≈ {eur_100:.2f} EUR
+· 🟣 200 CREDITS = 15.0 USDT ≈ {eur_200:.2f} EUR
+
+{translations[user_lang]['payment_addresses']}
+━━━━━━━━━━━━━━━━━━━━
+🎯 XRM (Monero) - 0.65 USDT/XMR:
+`459uXRXZknoRy3eq9TfZxKZ85jKWCZniBEh2U5GEg9VCYjT6f5U57cNjerJcpw2eF7jSmQwzh6sgmAQEL79HhM3NRmSu6ZT`
+
+₿ BTC (Bitcoin) - {btc_to_usdt:,.0f} USDT/BTC:
+`19rgimxDy1FKW5RvXWPQN4u9eevKySmJTu`
+
+Ξ ETH (Ethereum) - {eth_to_usdt:,.0f} USDT/ETH:
+`0x2e7edD5154Be461bae0BD9F79473FC54B0eeEE59`
+
+💳 PayPal (EUR/USD):
+https://www.paypal.me/BotAi36
+
+📊 CONVERSION:
+━━━━━━━━━━━━━━━━━━━━
+💰 2 credits = 1 search
+💸 1 credit = 0.1 USDT ≈ {0.1 * usdt_to_eur:.2f} EUR
+🔁 1 USDT = {usdt_to_eur:.2f} EUR (fixed rate)
+
+🎁 DISCOUNTS:
+━━━━━━━━━━━━━━━━━━━━
+• +50 credits: 10% discount
+• +100 credits: 20% discount
+• +200 credits: 25% discount
+
+📝 HOW TO BUY:
+━━━━━━━━━━━━━━━━━━━━
+1. Choose the package
+2. Send crypto to one of the addresses above
+3. Send TX Hash / Screenshot to @Zerofilter00
+4. Receive credits in 5-15 minutes
+
+⚠️ WARNINGS:
+━━━━━━━━━━━━━━━━━━━━
+• Only crypto payments (XRM, BTC, ETH)
+• PayPal available for EUR/USD
+• No refunds
+• Verify address before sending
+• Minimum 10 USDT equivalent
+
+📞 SUPPORT:
+━━━━━━━━━━━━━━━━━━━━
+• @Zerofilter00
+• 24/7 available
+
+⏰ {now.hour:02d}:{now.minute:02d}
+
+{data_italiana}"""
         
         keyboard = [
-            [InlineKeyboardButton("💳 Acquista 20 crediti", callback_data='buy_20')],
-            [InlineKeyboardButton("💳 Acquista 50 crediti", callback_data='buy_50')],
-            [InlineKeyboardButton("🔙 Indietro", callback_data='back_to_main')]
+            [InlineKeyboardButton(translations[user_lang]['buy_20'], callback_data='buy_20'),
+             InlineKeyboardButton(translations[user_lang]['buy_50'], callback_data='buy_50')],
+            [InlineKeyboardButton(translations[user_lang]['buy_100'], callback_data='buy_100'),
+             InlineKeyboardButton(translations[user_lang]['buy_200'], callback_data='buy_200')],
+            [InlineKeyboardButton(translations[user_lang]['back'], callback_data='back_to_main')]
         ]
         
         if update.callback_query:
