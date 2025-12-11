@@ -91,6 +91,8 @@ translations = {
         'buy_50': '💳 Acquista 50 crediti',
         'buy_100': '💳 Acquista 100 crediti',
         'buy_200': '💳 Acquista 200 crediti',
+        'buy_500': '💳 Acquista 500 crediti',
+        'buy_1000': '💳 Acquista 1000 crediti',
         
         # Testi di ricerca
         'search_menu_title': '🔍 Puoi cercare i seguenti dati:',
@@ -112,7 +114,7 @@ translations = {
         # Impostazioni
         'settings_title': '⚙️ IMPOSTAZIONI UTENTE',
         'personal_info': '👤 Informazioni Personali:',
-        'credit_system': '💳 Sistema Credit:',
+        'credit_system': '💳 Sistema Crediti:',
         'configurations': '⚙️ Configurazioni:',
         'today_stats': '📊 Statistiche odierne:',
         
@@ -157,6 +159,8 @@ translations = {
         'buy_50': '💳 Buy 50 credits',
         'buy_100': '💳 Buy 100 credits',
         'buy_200': '💳 Buy 200 credits',
+        'buy_500': '💳 Buy 500 credits',
+        'buy_1000': '💳 Buy 1000 credits',
         
         # Testi di ricerca
         'search_menu_title': '🔍 You can search for the following data:',
