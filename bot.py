@@ -2037,7 +2037,7 @@ Il cambio lingua influenzerà:
             await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
     
     async def show_shop_interface(self, update: Update, context: CallbackContext):
-        """Mostra l'interfaccia di acquisto crediti con crypto e fiat"""
+        """Mostra l'interfaccia di acquisto crediti con prezzi interi"""
         user_id = update.effective_user.id
         user_lang = self.get_user_language(user_id)
         
@@ -2049,17 +2049,46 @@ Il cambio lingua influenzerà:
         }
         data_italiana = f"{now.day} {mesi.get(now.month, 'novembre')}"
         
-        # Tassi di cambio (aggiornabili)
-        usdt_to_eur = 0.85  # 1 USDT = 0.85 EUR
-        btc_to_usdt = 45000  # 1 BTC = 45000 USDT (esempio)
-        eth_to_usdt = 2500   # 1 ETH = 2500 USDT (esempio)
-        xrm_to_usdt = 0.65   # 1 XRM = 0.65 USDT (esempio)
+        # PREZZI IN EURO (INTERI)
+        eur_20 = 5   # 20 crediti = 5€
+        eur_50 = 10  # 50 crediti = 10€
+        eur_100 = 18 # 100 crediti = 18€
+        eur_200 = 35 # 200 crediti = 35€
         
-        # Calcoli per EUR
-        eur_20 = 2.0 * usdt_to_eur
-        eur_50 = 4.5 * usdt_to_eur
-        eur_100 = 8.0 * usdt_to_eur
-        eur_200 = 15.0 * usdt_to_eur
+        # TASSI DI CAMBIO FISSI (semplificati per prezzi interi)
+        # Basati su prezzi approssimativi delle crypto
+        xmr_price = 140  # 1 XMR = 140€
+        btc_price = 45000  # 1 BTC = 45,000€
+        eth_price = 2500   # 1 ETH = 2,500€
+        usdt_price = 0.85  # 1 USDT = 0.85€ (per riferimento)
+        
+        # Calcola equivalenti in crypto (approssimati per essere semplici)
+        # 20 crediti = 5€
+        xmr_20 = round(5 / xmr_price, 4)  # 0.0357 XMR
+        btc_20 = round(5 / btc_price, 6)  # 0.000111 BTC
+        eth_20 = round(5 / eth_price, 4)  # 0.0020 ETH
+        usdt_20 = round(5 / usdt_price, 1)  # 5.9 USDT
+        
+        # 50 crediti = 10€
+        xmr_50 = round(10 / xmr_price, 4)  # 0.0714 XMR
+        btc_50 = round(10 / btc_price, 6)  # 0.000222 BTC
+        eth_50 = round(10 / eth_price, 4)  # 0.0040 ETH
+        usdt_50 = round(10 / usdt_price, 1)  # 11.8 USDT
+        
+        # 100 crediti = 18€
+        xmr_100 = round(18 / xmr_price, 4)  # 0.1286 XMR
+        btc_100 = round(18 / btc_price, 6)  # 0.000400 BTC
+        eth_100 = round(18 / eth_price, 4)  # 0.0072 ETH
+        usdt_100 = round(18 / usdt_price, 1)  # 21.2 USDT
+        
+        # 200 crediti = 35€
+        xmr_200 = round(35 / xmr_price, 4)  # 0.2500 XMR
+        btc_200 = round(35 / btc_price, 6)  # 0.000778 BTC
+        eth_200 = round(35 / eth_price, 4)  # 0.0140 ETH
+        usdt_200 = round(35 / usdt_price, 1)  # 41.2 USDT
+        
+        # Prezzo per credito
+        price_per_credit = eur_20 / 20  # 0.25€ per credito
         
         # Formatta i prezzi
         if user_lang == 'it':
@@ -2067,30 +2096,36 @@ Il cambio lingua influenzerà:
 
 {translations[user_lang]['credit_packages']}
 ━━━━━━━━━━━━━━━━━━━━
-· 🟢 20 CREDITI = 2.0 USDT ≈ {eur_20:.2f} EUR
-· 🟡 50 CREDITI = 4.5 USDT ≈ {eur_50:.2f} EUR
-· 🔵 100 CREDITI = 8.0 USDT ≈ {eur_100:.2f} EUR
-· 🟣 200 CREDITI = 15.0 USDT ≈ {eur_200:.2f} EUR
+· 🟢 20 CREDITI = {eur_20}€
+· 🟡 50 CREDITI = {eur_50}€
+· 🔵 100 CREDITI = {eur_100}€
+· 🟣 200 CREDITI = {eur_200}€
 
 {translations[user_lang]['payment_addresses']}
 ━━━━━━━━━━━━━━━━━━━━
-🎯 XRM (Monero) - 0.65 USDT/XMR:
+🎯 XRM (Monero) - {xmr_price}€/XMR:
+20c: {xmr_20:.4f} XMR | 50c: {xmr_50:.4f} XMR
+100c: {xmr_100:.4f} XMR | 200c: {xmr_200:.4f} XMR
 `459uXRXZknoRy3eq9TfZxKZ85jKWCZniBEh2U5GEg9VCYjT6f5U57cNjerJcpw2eF7jSmQwzh6sgmAQEL79HhM3NRmSu6ZT`
 
-₿ BTC (Bitcoin) - {btc_to_usdt:,.0f} USDT/BTC:
+₿ BTC (Bitcoin) - {btc_price:,.0f}€/BTC:
+20c: {btc_20:.6f} BTC | 50c: {btc_50:.6f} BTC
+100c: {btc_100:.6f} BTC | 200c: {btc_200:.6f} BTC
 `19rgimxDy1FKW5RvXWPQN4u9eevKySmJTu`
 
-Ξ ETH (Ethereum) - {eth_to_usdt:,.0f} USDT/ETH:
+Ξ ETH (Ethereum) - {eth_price:,.0f}€/ETH:
+20c: {eth_20:.4f} ETH | 50c: {eth_50:.4f} ETH
+100c: {eth_100:.4f} ETH | 200c: {eth_200:.4f} ETH
 `0x2e7edD5154Be461bae0BD9F79473FC54B0eeEE59`
 
-💳 PayPal (EUR/USD):
+💳 PayPal (EUR):
 https://www.paypal.me/BotAi36
 
 📊 CONVERSIONE:
 ━━━━━━━━━━━━━━━━━━━━
 💰 2 crediti = 1 ricerca
-💸 1 credito = 0.1 USDT ≈ {0.1 * usdt_to_eur:.2f} EUR
-🔁 1 USDT = {usdt_to_eur:.2f} EUR (tasso fisso)
+💸 1 credito = {price_per_credit:.2f}€
+📉 Prezzi crypto aggiornati
 
 🎁 SCONTI:
 ━━━━━━━━━━━━━━━━━━━━
@@ -2101,17 +2136,16 @@ https://www.paypal.me/BotAi36
 📝 COME ACQUISTARE:
 ━━━━━━━━━━━━━━━━━━━━
 1. Scegli il pacchetto
-2. Invia crypto a uno degli indirizzi sopra
+2. Invia l'importo esatto in crypto o PayPal
 3. Invia TX Hash / Screenshot a @Zerofilter00
 4. Ricevi crediti in 5-15 minuti
 
 ⚠️ AVVERTENZE:
 ━━━━━━━━━━━━━━━━━━━━
-• Solo pagamenti crypto (XRM, BTC, ETH)
-• PayPal disponibile per EUR/USD
+• Invia l'importo ESATTO indicato
 • Nessun rimborso
 • Verifica indirizzo prima di inviare
-• Minimo 10 USDT equivalente
+• I prezzi crypto si aggiornano settimanalmente
 
 📞 SUPPORTO:
 ━━━━━━━━━━━━━━━━━━━━
@@ -2126,30 +2160,36 @@ https://www.paypal.me/BotAi36
 
 {translations[user_lang]['credit_packages']}
 ━━━━━━━━━━━━━━━━━━━━
-· 🟢 20 CREDITS = 2.0 USDT ≈ {eur_20:.2f} EUR
-· 🟡 50 CREDITS = 4.5 USDT ≈ {eur_50:.2f} EUR
-· 🔵 100 CREDITS = 8.0 USDT ≈ {eur_100:.2f} EUR
-· 🟣 200 CREDITS = 15.0 USDT ≈ {eur_200:.2f} EUR
+· 🟢 20 CREDITS = {eur_20}€
+· 🟡 50 CREDITS = {eur_50}€
+· 🔵 100 CREDITS = {eur_100}€
+· 🟣 200 CREDITS = {eur_200}€
 
 {translations[user_lang]['payment_addresses']}
 ━━━━━━━━━━━━━━━━━━━━
-🎯 XRM (Monero) - 0.65 USDT/XMR:
+🎯 XRM (Monero) - {xmr_price}€/XMR:
+20c: {xmr_20:.4f} XMR | 50c: {xmr_50:.4f} XMR
+100c: {xmr_100:.4f} XMR | 200c: {xmr_200:.4f} XMR
 `459uXRXZknoRy3eq9TfZxKZ85jKWCZniBEh2U5GEg9VCYjT6f5U57cNjerJcpw2eF7jSmQwzh6sgmAQEL79HhM3NRmSu6ZT`
 
-₿ BTC (Bitcoin) - {btc_to_usdt:,.0f} USDT/BTC:
+₿ BTC (Bitcoin) - {btc_price:,.0f}€/BTC:
+20c: {btc_20:.6f} BTC | 50c: {btc_50:.6f} BTC
+100c: {btc_100:.6f} BTC | 200c: {btc_200:.6f} BTC
 `19rgimxDy1FKW5RvXWPQN4u9eevKySmJTu`
 
-Ξ ETH (Ethereum) - {eth_to_usdt:,.0f} USDT/ETH:
+Ξ ETH (Ethereum) - {eth_price:,.0f}€/ETH:
+20c: {eth_20:.4f} ETH | 50c: {eth_50:.4f} ETH
+100c: {eth_100:.4f} ETH | 200c: {eth_200:.4f} ETH
 `0x2e7edD5154Be461bae0BD9F79473FC54B0eeEE59`
 
-💳 PayPal (EUR/USD):
+💳 PayPal (EUR):
 https://www.paypal.me/BotAi36
 
 📊 CONVERSION:
 ━━━━━━━━━━━━━━━━━━━━
 💰 2 credits = 1 search
-💸 1 credit = 0.1 USDT ≈ {0.1 * usdt_to_eur:.2f} EUR
-🔁 1 USDT = {usdt_to_eur:.2f} EUR (fixed rate)
+💸 1 credit = {price_per_credit:.2f}€
+📉 Crypto prices updated
 
 🎁 DISCOUNTS:
 ━━━━━━━━━━━━━━━━━━━━
@@ -2160,17 +2200,16 @@ https://www.paypal.me/BotAi36
 📝 HOW TO BUY:
 ━━━━━━━━━━━━━━━━━━━━
 1. Choose the package
-2. Send crypto to one of the addresses above
+2. Send the EXACT amount in crypto or PayPal
 3. Send TX Hash / Screenshot to @Zerofilter00
 4. Receive credits in 5-15 minutes
 
 ⚠️ WARNINGS:
 ━━━━━━━━━━━━━━━━━━━━
-• Only crypto payments (XRM, BTC, ETH)
-• PayPal available for EUR/USD
+• Send the EXACT amount indicated
 • No refunds
 • Verify address before sending
-• Minimum 10 USDT equivalent
+• Crypto prices update weekly
 
 📞 SUPPORT:
 ━━━━━━━━━━━━━━━━━━━━
@@ -2193,6 +2232,8 @@ https://www.paypal.me/BotAi36
             await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
         else:
             await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+
     
     async def start(self, update: Update, context: CallbackContext):
         """Comando start - Mostra il menu principale con interfaccia"""
