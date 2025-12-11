@@ -1716,7 +1716,13 @@ class LeakosintBot:
             
         elif query.data == 'buy_200':
             await query.answer("Feature in sviluppo - Presto disponibile!", show_alert=True)
+
+        elif query.data == 'buy_500':
+            await query.answer("Feature in sviluppo - Presto disponibile!", show_alert=True)
     
+        elif query.data == 'buy_1000':
+            await query.answer("Feature in sviluppo - Presto disponibile!", show_alert=True)
+
     async def show_settings(self, update: Update, context: CallbackContext):
         """Mostra le impostazioni utente"""
         query = update.callback_query
@@ -2035,7 +2041,8 @@ Il cambio lingua influenzerà:
             await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
         else:
             await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-    
+
+
     async def show_shop_interface(self, update: Update, context: CallbackContext):
         """Mostra l'interfaccia di acquisto crediti con prezzi interi"""
         user_id = update.effective_user.id
@@ -2050,45 +2057,20 @@ Il cambio lingua influenzerà:
         data_italiana = f"{now.day} {mesi.get(now.month, 'novembre')}"
         
         # PREZZI IN EURO (INTERI)
-        eur_20 = 5   # 20 crediti = 5€
-        eur_50 = 10  # 50 crediti = 10€
-        eur_100 = 18 # 100 crediti = 18€
-        eur_200 = 35 # 200 crediti = 35€
+        eur_20 = 5     # 20 crediti = 5€
+        eur_50 = 10    # 50 crediti = 10€
+        eur_100 = 18   # 100 crediti = 18€
+        eur_200 = 35   # 200 crediti = 35€
+        eur_500 = 80   # 500 crediti = 80€
+        eur_1000 = 150 # 1000 crediti = 150€
         
-        # TASSI DI CAMBIO FISSI (semplificati per prezzi interi)
-        # Basati su prezzi approssimativi delle crypto
-        xmr_price = 140  # 1 XMR = 140€
-        btc_price = 45000  # 1 BTC = 45,000€
-        eth_price = 2500   # 1 ETH = 2,500€
-        usdt_price = 0.85  # 1 USDT = 0.85€ (per riferimento)
-        
-        # Calcola equivalenti in crypto (approssimati per essere semplici)
-        # 20 crediti = 5€
-        xmr_20 = round(5 / xmr_price, 4)  # 0.0357 XMR
-        btc_20 = round(5 / btc_price, 6)  # 0.000111 BTC
-        eth_20 = round(5 / eth_price, 4)  # 0.0020 ETH
-        usdt_20 = round(5 / usdt_price, 1)  # 5.9 USDT
-        
-        # 50 crediti = 10€
-        xmr_50 = round(10 / xmr_price, 4)  # 0.0714 XMR
-        btc_50 = round(10 / btc_price, 6)  # 0.000222 BTC
-        eth_50 = round(10 / eth_price, 4)  # 0.0040 ETH
-        usdt_50 = round(10 / usdt_price, 1)  # 11.8 USDT
-        
-        # 100 crediti = 18€
-        xmr_100 = round(18 / xmr_price, 4)  # 0.1286 XMR
-        btc_100 = round(18 / btc_price, 6)  # 0.000400 BTC
-        eth_100 = round(18 / eth_price, 4)  # 0.0072 ETH
-        usdt_100 = round(18 / usdt_price, 1)  # 21.2 USDT
-        
-        # 200 crediti = 35€
-        xmr_200 = round(35 / xmr_price, 4)  # 0.2500 XMR
-        btc_200 = round(35 / btc_price, 6)  # 0.000778 BTC
-        eth_200 = round(35 / eth_price, 4)  # 0.0140 ETH
-        usdt_200 = round(35 / usdt_price, 1)  # 41.2 USDT
-        
-        # Prezzo per credito
-        price_per_credit = eur_20 / 20  # 0.25€ per credito
+        # PREZZI IN DOLLARI (stessi numeri)
+        usd_20 = 5     # 20 crediti = 5$
+        usd_50 = 10    # 50 crediti = 10$
+        usd_100 = 18   # 100 crediti = 18$
+        usd_200 = 35   # 200 crediti = 35$
+        usd_500 = 80   # 500 crediti = 80$
+        usd_1000 = 150 # 1000 crediti = 150$
         
         # Formatta i prezzi
         if user_lang == 'it':
@@ -2096,56 +2078,49 @@ Il cambio lingua influenzerà:
 
 {translations[user_lang]['credit_packages']}
 ━━━━━━━━━━━━━━━━━━━━
-· 🟢 20 CREDITI = {eur_20}€
-· 🟡 50 CREDITI = {eur_50}€
-· 🔵 100 CREDITI = {eur_100}€
-· 🟣 200 CREDITI = {eur_200}€
+· 🟢 20 CREDITI = {eur_20}€ / {usd_20}$
+· 🟡 50 CREDITI = {eur_50}€ / {usd_50}$
+· 🔵 100 CREDITI = {eur_100}€ / {usd_100}$
+· 🟣 200 CREDITI = {eur_200}€ / {usd_200}$
+· 🔴 500 CREDITI = {eur_500}€ / {usd_500}$
+· 🟤 1000 CREDITI = {eur_1000}€ / {usd_1000}$
 
 {translations[user_lang]['payment_addresses']}
 ━━━━━━━━━━━━━━━━━━━━
-🎯 XRM (Monero) - {xmr_price}€/XMR:
-20c: {xmr_20:.4f} XMR | 50c: {xmr_50:.4f} XMR
-100c: {xmr_100:.4f} XMR | 200c: {xmr_200:.4f} XMR
+🎯 XRM (Monero):
 `459uXRXZknoRy3eq9TfZxKZ85jKWCZniBEh2U5GEg9VCYjT6f5U57cNjerJcpw2eF7jSmQwzh6sgmAQEL79HhM3NRmSu6ZT`
 
-₿ BTC (Bitcoin) - {btc_price:,.0f}€/BTC:
-20c: {btc_20:.6f} BTC | 50c: {btc_50:.6f} BTC
-100c: {btc_100:.6f} BTC | 200c: {btc_200:.6f} BTC
+₿ BTC (Bitcoin):
 `19rgimxDy1FKW5RvXWPQN4u9eevKySmJTu`
 
-Ξ ETH (Ethereum) - {eth_price:,.0f}€/ETH:
-20c: {eth_20:.4f} ETH | 50c: {eth_50:.4f} ETH
-100c: {eth_100:.4f} ETH | 200c: {eth_200:.4f} ETH
+Ξ ETH (Ethereum):
 `0x2e7edD5154Be461bae0BD9F79473FC54B0eeEE59`
 
-💳 PayPal (EUR):
+💳 PayPal (EUR/USD):
 https://www.paypal.me/BotAi36
 
 📊 CONVERSIONE:
 ━━━━━━━━━━━━━━━━━━━━
 💰 2 crediti = 1 ricerca
-💸 1 credito = {price_per_credit:.2f}€
-📉 Prezzi crypto aggiornati
 
 🎁 SCONTI:
 ━━━━━━━━━━━━━━━━━━━━
-• +50 crediti: 10% sconto
-• +100 crediti: 20% sconto
-• +200 crediti: 25% sconto
+• 200 crediti: 10% sconto
+• 500 crediti: 15% sconto  
+• 1000 crediti: 20% sconto
 
 📝 COME ACQUISTARE:
 ━━━━━━━━━━━━━━━━━━━━
 1. Scegli il pacchetto
-2. Invia l'importo esatto in crypto o PayPal
-3. Invia TX Hash / Screenshot a @Zerofilter00
+2. Invia l'importo corrispondente in crypto o PayPal
+3. Invia ID Profilo / Screenshot a @Zerofilter00 (o su messaggi PayPal)
 4. Ricevi crediti in 5-15 minuti
 
 ⚠️ AVVERTENZE:
 ━━━━━━━━━━━━━━━━━━━━
-• Invia l'importo ESATTO indicato
+• Invia l'importo esatto in €/$ o equivalente crypto
 • Nessun rimborso
 • Verifica indirizzo prima di inviare
-• I prezzi crypto si aggiornano settimanalmente
 
 📞 SUPPORTO:
 ━━━━━━━━━━━━━━━━━━━━
@@ -2160,56 +2135,49 @@ https://www.paypal.me/BotAi36
 
 {translations[user_lang]['credit_packages']}
 ━━━━━━━━━━━━━━━━━━━━
-· 🟢 20 CREDITS = {eur_20}€
-· 🟡 50 CREDITS = {eur_50}€
-· 🔵 100 CREDITS = {eur_100}€
-· 🟣 200 CREDITS = {eur_200}€
+· 🟢 20 CREDITS = {eur_20}€ / {usd_20}$
+· 🟡 50 CREDITS = {eur_50}€ / {usd_50}$
+· 🔵 100 CREDITS = {eur_100}€ / {usd_100}$
+· 🟣 200 CREDITS = {eur_200}€ / {usd_200}$
+· 🔴 500 CREDITS = {eur_500}€ / {usd_500}$
+· 🟤 1000 CREDITS = {eur_1000}€ / {usd_1000}$
 
 {translations[user_lang]['payment_addresses']}
 ━━━━━━━━━━━━━━━━━━━━
-🎯 XRM (Monero) - {xmr_price}€/XMR:
-20c: {xmr_20:.4f} XMR | 50c: {xmr_50:.4f} XMR
-100c: {xmr_100:.4f} XMR | 200c: {xmr_200:.4f} XMR
+🎯 XRM (Monero):
 `459uXRXZknoRy3eq9TfZxKZ85jKWCZniBEh2U5GEg9VCYjT6f5U57cNjerJcpw2eF7jSmQwzh6sgmAQEL79HhM3NRmSu6ZT`
 
-₿ BTC (Bitcoin) - {btc_price:,.0f}€/BTC:
-20c: {btc_20:.6f} BTC | 50c: {btc_50:.6f} BTC
-100c: {btc_100:.6f} BTC | 200c: {btc_200:.6f} BTC
+₿ BTC (Bitcoin):
 `19rgimxDy1FKW5RvXWPQN4u9eevKySmJTu`
 
-Ξ ETH (Ethereum) - {eth_price:,.0f}€/ETH:
-20c: {eth_20:.4f} ETH | 50c: {eth_50:.4f} ETH
-100c: {eth_100:.4f} ETH | 200c: {eth_200:.4f} ETH
+Ξ ETH (Ethereum):
 `0x2e7edD5154Be461bae0BD9F79473FC54B0eeEE59`
 
-💳 PayPal (EUR):
+💳 PayPal (EUR/USD):
 https://www.paypal.me/BotAi36
 
 📊 CONVERSION:
 ━━━━━━━━━━━━━━━━━━━━
 💰 2 credits = 1 search
-💸 1 credit = {price_per_credit:.2f}€
-📉 Crypto prices updated
 
 🎁 DISCOUNTS:
 ━━━━━━━━━━━━━━━━━━━━
-• +50 credits: 10% discount
-• +100 credits: 20% discount
-• +200 credits: 25% discount
+• 200 credits: 10% discount
+• 500 credits: 15% discount
+• 1000 credits: 20% discount
 
 📝 HOW TO BUY:
 ━━━━━━━━━━━━━━━━━━━━
 1. Choose the package
-2. Send the EXACT amount in crypto or PayPal
-3. Send TX Hash / Screenshot to @Zerofilter00
+2. Send the corresponding amount in crypto or PayPal
+3. Send ID Profile / Screenshot to @Zerofilter00 (or on PayPal messages)
 4. Receive credits in 5-15 minutes
 
 ⚠️ WARNINGS:
 ━━━━━━━━━━━━━━━━━━━━
-• Send the EXACT amount indicated
+• Send the exact amount in €/$ or crypto equivalent
 • No refunds
 • Verify address before sending
-• Crypto prices update weekly
 
 📞 SUPPORT:
 ━━━━━━━━━━━━━━━━━━━━
@@ -2221,10 +2189,12 @@ https://www.paypal.me/BotAi36
 {data_italiana}"""
         
         keyboard = [
-            [InlineKeyboardButton(translations[user_lang]['buy_20'], callback_data='buy_20'),
-             InlineKeyboardButton(translations[user_lang]['buy_50'], callback_data='buy_50')],
-            [InlineKeyboardButton(translations[user_lang]['buy_100'], callback_data='buy_100'),
-             InlineKeyboardButton(translations[user_lang]['buy_200'], callback_data='buy_200')],
+            [InlineKeyboardButton(f"💳 {eur_20}€ - 20c", callback_data='buy_20'),
+             InlineKeyboardButton(f"💳 {eur_50}€ - 50c", callback_data='buy_50')],
+            [InlineKeyboardButton(f"💳 {eur_100}€ - 100c", callback_data='buy_100'),
+             InlineKeyboardButton(f"💳 {eur_200}€ - 200c", callback_data='buy_200')],
+            [InlineKeyboardButton(f"💳 {eur_500}€ - 500c", callback_data='buy_500'),
+             InlineKeyboardButton(f"💳 {eur_1000}€ - 1000c", callback_data='buy_1000')],
             [InlineKeyboardButton(translations[user_lang]['back'], callback_data='back_to_main')]
         ]
         
@@ -2232,7 +2202,6 @@ https://www.paypal.me/BotAi36
             await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
         else:
             await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-
 
     
     async def start(self, update: Update, context: CallbackContext):
