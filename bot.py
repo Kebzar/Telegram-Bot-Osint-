@@ -3700,7 +3700,7 @@ Query: {query}
             )
             return
         
-        if self.get_user_balance(user_id) < 2.0:
+        if self.get_user_balance(user_id) < 2:
             user_lang = self.get_user_language(user_id)
             await update.message.reply_text(
                 translations[user_lang]['insufficient_credits']
@@ -3721,7 +3721,7 @@ Query: {query}
 🔍 Lettura righe...
 
 ⏰ {now.hour:02d}:{now.minute:02d}
----
+
 {data_italiana}"""
         
         msg = await update.message.reply_text(wait_text)
@@ -3746,7 +3746,7 @@ Query: {query}
 🔧 Salva come: "UTF-8 senza BOM"
 
 ⏰ {datetime.now().hour:02d}:{datetime.now().minute:02d}
----
+
 {data_italiana}"""
                 await msg.edit_text(error_text)
                 return
@@ -3776,7 +3776,7 @@ Query: {query}
                 lines = lines[:50]
                 await msg.edit_text(f"⚠️ Limitato a 50 righe (massimo consentito)")
             
-            total_cost = len(lines) * 2.0
+            total_cost = len(lines) * 2
             current_balance = self.get_user_balance(user_id)
             
             if current_balance < total_cost:
