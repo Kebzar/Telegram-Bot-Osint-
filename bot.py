@@ -2153,17 +2153,18 @@ https://www.paypal.me/BotAi36
 ━━━━━━━━━━━━━━━━━━━━
 Ⓜ️ XRM (Monero):
 
-459uXRXZknoRy3eq9TfZxKZ85jKWCZniBEh2U5GEg9VCYjT6f5U57cNjerJcpw2eF7jSmQwzh6sgmAQEL79HhM3NRmSu6ZT
+`459uXRXZknoRy3eq9TfZxKZ85jKWCZniBEh2U5GEg9VCYjT6f5U57cNjerJcpw2eF7jSmQwzh6sgmAQEL79HhM3NRmSu6ZT`
 
 ₿ BTC (Bitcoin):
 
-19rgimxDy1FKW5RvXWPQN4u9eevKySmJTu
+`19rgimxDy1FKW5RvXWPQN4u9eevKySmJTu`
 
 Ξ ETH (Ethereum):
 
-0x2e7edD5154Be461bae0BD9F79473FC54B0eeEE59
+`0x2e7edD5154Be461bae0BD9F79473FC54B0eeEE59`
 
 💳 PayPal (EUR/USD):
+
 https://www.paypal.me/BotAi36
 
 📊 CONVERSION:
