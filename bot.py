@@ -2092,12 +2092,15 @@ Il cambio lingua influenzerà:
 {translations[user_lang]['payment_addresses']}
 ━━━━━━━━━━━━━━━━━━━━
 Ⓜ️ XRM (Monero):
+
 459uXRXZknoRy3eq9TfZxKZ85jKWCZniBEh2U5GEg9VCYjT6f5U57cNjerJcpw2eF7jSmQwzh6sgmAQEL79HhM3NRmSu6ZT
 
 ₿ BTC (Bitcoin):
+
 19rgimxDy1FKW5RvXWPQN4u9eevKySmJTu
 
 Ξ ETH (Ethereum):
+
 0x2e7edD5154Be461bae0BD9F79473FC54B0eeEE59
 
 💳 PayPal (EUR/USD):
@@ -2149,12 +2152,15 @@ https://www.paypal.me/BotAi36
 {translations[user_lang]['payment_addresses']}
 ━━━━━━━━━━━━━━━━━━━━
 Ⓜ️ XRM (Monero):
+
 459uXRXZknoRy3eq9TfZxKZ85jKWCZniBEh2U5GEg9VCYjT6f5U57cNjerJcpw2eF7jSmQwzh6sgmAQEL79HhM3NRmSu6ZT
 
 ₿ BTC (Bitcoin):
+
 19rgimxDy1FKW5RvXWPQN4u9eevKySmJTu
 
 Ξ ETH (Ethereum):
+
 0x2e7edD5154Be461bae0BD9F79473FC54B0eeEE59
 
 💳 PayPal (EUR/USD):
@@ -2635,7 +2641,7 @@ Errore: {str(e)[:100]}
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
         result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
-        result_text += f"\n---\n{data_italiana}"
+        result_text += f"\n\n{data_italiana}"
         
         try:
             await msg.edit_text(result_text)
@@ -2686,7 +2692,7 @@ Errore: {str(e)[:100]}
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
         result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
-        result_text += f"\n---\n{data_italiana}"
+        result_text += f"\n\n{data_italiana}"
         
         try:
             await msg.edit_text(result_text)
@@ -2763,7 +2769,7 @@ Errore: {str(e)[:100]}
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
         result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
-        result_text += f"\n---\n{data_italiana}"
+        result_text += f"\n\n{data_italiana}"
         
         try:
             await msg.edit_text(result_text)
@@ -2811,7 +2817,7 @@ Errore: {str(e)[:100]}
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
         result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
-        result_text += f"\n---\n{data_italiana}"
+        result_text += f"\n\n{data_italiana}"
         
         try:
             await msg.edit_text(result_text)
@@ -2883,7 +2889,7 @@ Errore: {str(e)[:100]}
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
         result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
-        result_text += f"\n---\n{data_italiana}"
+        result_text += f"\n\n{data_italiana}"
         
         try:
             await msg.edit_text(result_text)
@@ -2926,7 +2932,7 @@ Errore: {str(e)[:100]}
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
         result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
-        result_text += f"\n---\n{data_italiana}"
+        result_text += f"\n\n{data_italiana}"
         
         try:
             await msg.edit_text(result_text)
@@ -2981,7 +2987,7 @@ Errore: {str(e)[:100]}
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
         result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
-        result_text += f"\n---\n{data_italiana}"
+        result_text += f"\n\n{data_italiana}"
         
         try:
             await msg.edit_text(result_text)
@@ -3019,7 +3025,7 @@ Errore: {str(e)[:100]}
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
         result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
-        result_text += f"\n---\n{data_italiana}"
+        result_text += f"\n\n{data_italiana}"
         
         try:
             await msg.edit_text(result_text)
@@ -3081,7 +3087,7 @@ Errore: {str(e)[:100]}
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
         result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
-        result_text += f"\n---\n{data_italiana}"
+        result_text += f"\n\n{data_italiana}"
         
         try:
             await msg.edit_text(result_text)
@@ -3152,7 +3158,7 @@ Errore: {str(e)[:100]}
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
         result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
-        result_text += f"\n---\n{data_italiana}"
+        result_text += f"\n\n{data_italiana}"
         
         try:
             await msg.edit_text(result_text)
@@ -3276,7 +3282,7 @@ Errore: {str(e)[:100]}
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
         result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
-        result_text += f"\n---\n{data_italiana}"
+        result_text += f"\n\n{data_italiana}"
         
         try:
             await msg.edit_text(result_text)
@@ -3437,7 +3443,7 @@ Errore: {str(e)[:100]}
             admin_text += f"\n  💎 Crediti: {user[2]} | 🔍 Ricerche: {user[3]}"
         
         admin_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
-        admin_text += f"\n---\n{data_italiana}"
+        admin_text += f"\n\n{data_italiana}"
         
         await update.message.reply_text(admin_text)
     
@@ -3506,7 +3512,7 @@ Errore: {str(e)[:100]}
         }
         data_italiana = f"{now.day} {mesi.get(now.month, 'novembre')}"
         
-        help_text = f"""🤖 COME USARE LEAKOSINTBOT
+        help_text = f"""🤖 COME USARE Zeroshadebot
 
 🔍 INVIA:
 · 📧 Email: example@gmail.com
@@ -3872,7 +3878,7 @@ Query: {query}
                 result_text += f"\n\n📌 ... e altre {len(all_results) - 20} righe"
             
             result_text += f"\n\n⏰ {datetime.now().hour:02d}:{datetime.now().minute:02d}"
-            result_text += f"\n---\n{data_italiana}"
+            result_text += f"\n\n{data_italiana}"
             
             try:
                 await msg.edit_text(result_text)
