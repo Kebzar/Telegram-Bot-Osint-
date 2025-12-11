@@ -1763,7 +1763,7 @@ class LeakosintBot:
         
         keyboard = [
             [InlineKeyboardButton("🌐 Cambia Lingua", callback_data='language_settings')],
-            keyboard = [[InlineKeyboardButton(translations[user_lang]['⬅️back'], callback_data='back_to_main')]]
+            [[InlineKeyboardButton(translations[user_lang]['⬅️back'], callback_data='back_to_main')]]
         ]
         await query.edit_message_text(settings_text, reply_markup=InlineKeyboardMarkup(keyboard))
     
