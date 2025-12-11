@@ -1594,15 +1594,15 @@ class LeakosintBot:
         c.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
         if not c.fetchone():
             c.execute('''INSERT INTO users (user_id, username, balance) 
-                       VALUES (?, ?, 10.0)''', (user_id, username))
+                       VALUES (?, ?, 4)''', (user_id, username))
             conn.commit()
             return True
         return False
     
-    def get_user_balance(self, user_id: int) -> float:
+    def get_user_balance(self, user_id: int) -> int:
         c.execute('SELECT balance FROM users WHERE user_id = ?', (user_id,))
         result = c.fetchone()
-        return result[0] if result else 0.0
+        return result[0] if result else 0
     
     def get_user_searches(self, user_id: int) -> int:
         c.execute('SELECT searches FROM users WHERE user_id = ?', (user_id,))
@@ -1641,7 +1641,7 @@ class LeakosintBot:
         result = c.fetchone()
         return result[0] if result else 'N/A'
     
-    async def update_balance(self, user_id: int, cost: float = 2.0) -> bool:
+    async def update_balance(self, user_id: int, cost: int = 2) -> bool:
         current = self.get_user_balance(user_id)
         if current >= cost:
             new_balance = current - cost
@@ -1652,7 +1652,7 @@ class LeakosintBot:
             return True
         return False
     
-    def add_credits(self, user_id: int, amount: float) -> bool:
+    def add_credits(self, user_id: int, amount: int) -> bool:
         try:
             c.execute('''UPDATE users SET balance = balance + ?, 
                        last_active = CURRENT_TIMESTAMP WHERE user_id = ?''', 
