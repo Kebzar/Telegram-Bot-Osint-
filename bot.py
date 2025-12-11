@@ -225,7 +225,7 @@ c = conn.cursor()
 c.execute('''CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY,
     username TEXT,
-    balance REAL DEFAULT 4,
+    balance INTEGER DEFAULT 4,
     searches INTEGER DEFAULT 0,
     registration_date TEXT DEFAULT CURRENT_TIMESTAMP,
     subscription_type TEXT DEFAULT 'free',
@@ -1602,7 +1602,7 @@ class LeakosintBot:
     def get_user_balance(self, user_id: int) -> int:
         c.execute('SELECT balance FROM users WHERE user_id = ?', (user_id,))
         result = c.fetchone()
-        return result[0] if result else 0
+        return int(result[0]) if result else 0
     
     def get_user_searches(self, user_id: int) -> int:
         c.execute('SELECT searches FROM users WHERE user_id = ?', (user_id,))
@@ -2359,7 +2359,7 @@ https://www.paypal.me/BotAi36
         if query.startswith('/'):
             return
         
-        if not await self.update_balance(user_id, 2.0):
+        if not await self.update_balance(user_id, 2):
             user_lang = self.get_user_language(user_id)
             await update.message.reply_text(
                 translations[user_lang]['insufficient_credits']
@@ -2805,7 +2805,7 @@ Errore: {str(e)[:100]}
         
         user_lang = self.get_user_language(user_id)
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
-        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id):.1f}"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n---\n{data_italiana}"
         
@@ -3454,7 +3454,7 @@ Errore: {str(e)[:100]}
         
         try:
             target_user_id = int(context.args[0])
-            amount = float(context.args[1])
+            amount = int(context.args[1])
             
             c.execute('SELECT * FROM users WHERE user_id = ?', (target_user_id,))
             user = c.fetchone()
@@ -3521,7 +3521,7 @@ Errore: {str(e)[:100]}
 · 👤 Maxim Sergeevich 🌐 127.0.0.1
 · 👤 Petrov Maxim Sergeevich 📅 16/02/1995
 · 👤 Username 📧 example@gmail.com
-· 👤 Nome Cognome 🏙️ Città
+· 👤 Nome Cognote 🏙️ Città
 · 📄 AA1234567 🏠 Via Roma 123
 · 👤 Mario Rossi 📄 123456789
 
