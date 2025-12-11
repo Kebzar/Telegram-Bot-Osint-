@@ -2628,7 +2628,7 @@ Errore: {str(e)[:100]}
                 result_text += f"\n  - Nessuna correlazione diretta trovata"
         
         user_lang = self.get_user_language(user_id)
-        result_text += f"\n\n{translations[user_lang]['credits_used']} 2.0"
+        result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
         result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n---\n{data_italiana}"
@@ -2679,7 +2679,7 @@ Errore: {str(e)[:100]}
             result_text += f"\n📭 L'email non è stata trovata nei database conosciuti."
         
         user_lang = self.get_user_language(user_id)
-        result_text += f"\n\n{translations[user_lang]['credits_used']} 2.0"
+        result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
         result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n---\n{data_italiana}"
@@ -2756,7 +2756,7 @@ Errore: {str(e)[:100]}
             result_text += f"\n📵 Il numero non è stato trovato."
         
         user_lang = self.get_user_language(user_id)
-        result_text += f"\n\n{translations[user_lang]['credits_used']} 2.0"
+        result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
         result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n---\n{data_italiana}"
@@ -2804,7 +2804,7 @@ Errore: {str(e)[:100]}
             result_text += f"\n👤 Il nome non è stato trovato."
         
         user_lang = self.get_user_language(user_id)
-        result_text += f"\n\n{translations[user_lang]['credits_used']} 2.0"
+        result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
         result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id):.1f}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n---\n{data_italiana}"
@@ -2876,7 +2876,7 @@ Errore: {str(e)[:100]}
             result_text += f"\n  · Email: se è un indirizzo email"
         
         user_lang = self.get_user_language(user_id)
-        result_text += f"\n\n{translations[user_lang]['credits_used']} 2.0"
+        result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
         result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n---\n{data_italiana}"
@@ -2919,7 +2919,7 @@ Errore: {str(e)[:100]}
                 result_text += f"\n  - 🚪 Porte: {', '.join(map(str, ports))}"
         
         user_lang = self.get_user_language(user_id)
-        result_text += f"\n\n{translations[user_lang]['credits_used']} 2.0"
+        result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
         result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n---\n{data_italiana}"
@@ -2974,7 +2974,7 @@ Errore: {str(e)[:100]}
         result_text += f"\n📏 Lunghezza: {len(password)} caratteri"
         
         user_lang = self.get_user_language(user_id)
-        result_text += f"\n\n{translations[user_lang]['credits_used']} 2.0"
+        result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
         result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n---\n{data_italiana}"
@@ -3074,8 +3074,8 @@ Errore: {str(e)[:100]}
         result_text += f"\n\n📋 TIPO DOCUMENTO: {doc_type}"
         
         user_lang = self.get_user_language(user_id)
-        result_text += f"\n\n{translations[user_lang]['credits_used']} 2.0"
-        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id):.1f}"
+        result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n---\n{data_italiana}"
         
@@ -3145,8 +3145,8 @@ Errore: {str(e)[:100]}
             result_text += f"\n  - Per indirizzo casa: 'Casa Via Verdi 12'"
         
         user_lang = self.get_user_language(user_id)
-        result_text += f"\n\n{translations[user_lang]['credits_used']} 2.0"
-        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id):.1f}"
+        result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n---\n{data_italiana}"
         
