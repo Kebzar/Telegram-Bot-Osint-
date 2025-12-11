@@ -1755,7 +1755,7 @@ class LeakosintBot:
 🕒 Ultima attività: {last_active}
 
 💳 Sistema Credit:
-💰 Crediti attuali: {balance:.1f}
+💰 Crediti attuali: {balance}
 🔍 Ricerche effettuate: {searches}
 🎯 Ricerche disponibili: {int(balance / 2)}
 📊 Abbonamento: {sub_type}
@@ -1767,7 +1767,7 @@ class LeakosintBot:
 
 📊 Statistiche odierne:
 - Ricerche oggi: {searches % 100}
-- Crediti usati oggi: {(100 - balance) % 100:.1f}
+- Crediti usati oggi: {(100 - balance) % 100}
 
 ⏰ {now.hour:02d}:{now.minute:02d}
 
@@ -2629,7 +2629,7 @@ Errore: {str(e)[:100]}
         
         user_lang = self.get_user_language(user_id)
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2.0"
-        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id):.1f}"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n---\n{data_italiana}"
         
@@ -2680,7 +2680,7 @@ Errore: {str(e)[:100]}
         
         user_lang = self.get_user_language(user_id)
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2.0"
-        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id):.1f}"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n---\n{data_italiana}"
         
@@ -2757,7 +2757,7 @@ Errore: {str(e)[:100]}
         
         user_lang = self.get_user_language(user_id)
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2.0"
-        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id):.1f}"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n---\n{data_italiana}"
         
@@ -2877,7 +2877,7 @@ Errore: {str(e)[:100]}
         
         user_lang = self.get_user_language(user_id)
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2.0"
-        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id):.1f}"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n---\n{data_italiana}"
         
@@ -2920,7 +2920,7 @@ Errore: {str(e)[:100]}
         
         user_lang = self.get_user_language(user_id)
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2.0"
-        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id):.1f}"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n---\n{data_italiana}"
         
@@ -2975,7 +2975,7 @@ Errore: {str(e)[:100]}
         
         user_lang = self.get_user_language(user_id)
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2.0"
-        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id):.1f}"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n---\n{data_italiana}"
         
@@ -3012,8 +3012,8 @@ Errore: {str(e)[:100]}
             result_text += f"\n🔑 Hash non presente nei database."
         
         user_lang = self.get_user_language(user_id)
-        result_text += f"\n\n{translations[user_lang]['credits_used']} 2.0"
-        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id):.1f}"
+        result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n---\n{data_italiana}"
         
@@ -3269,8 +3269,8 @@ Errore: {str(e)[:100]}
         result_text += f"\n  - 📧 Cerca con email associata"
         
         user_lang = self.get_user_language(user_id)
-        result_text += f"\n\n{translations[user_lang]['credits_used']} 2.0"
-        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id):.1f}"
+        result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n---\n{data_italiana}"
         
@@ -3374,7 +3374,7 @@ Errore: {str(e)[:100]}
         
         text = f"""💰 CREDITI DISPONIBILI
 
-💎 Saldo attuale: {balance:.1f} crediti
+💎 Saldo attuale: {balance} crediti
 🔍 Costo per ricerca: 2 crediti
 📊 Ricerche effettuate: {searches}
 🎯 Ricerche disponibili: {int(balance / 2)}
@@ -3421,7 +3421,7 @@ Errore: {str(e)[:100]}
 📊 Statistiche:
 · 👥 Utenti totali: {total_users}
 · 🔍 Ricerche totali: {total_searches}
-· 💎 Credit totali: {total_credits:.1f}
+· 💎 Credit totali: {total_credits}
 
 👥 Ultimi 5 utenti:"""
         
@@ -3448,7 +3448,7 @@ Errore: {str(e)[:100]}
         if not context.args or len(context.args) < 2:
             await update.message.reply_text(
                 "❌ Uso: /addcredits <user_id> <amount>\n"
-                "Esempio: /addcredits 123456789 50.0"
+                "Esempio: /addcredits 123456789 50"
             )
             return
         
@@ -3478,8 +3478,8 @@ Errore: {str(e)[:100]}
                     await context.bot.send_message(
                         chat_id=target_user_id,
                         text=f"🎉 Hai ricevuto {amount} crediti!\n"
-                             f"💎 Saldo attuale: {new_balance:.1f} crediti\n"
-                             f"🔍 Ricerche disponibili: {int(new_balance / 2.0)}"
+                             f"💎 Saldo attuale: {new_balance} crediti\n"
+                             f"🔍 Ricerche disponibili: {int(new_balance / 2)}"
                     )
                 except:
                     pass
@@ -3526,15 +3526,13 @@ Errore: {str(e)[:100]}
 · 👤 Mario Rossi 📄 123456789
 
 💎 SISTEMA CREDITI:
-· 🔍 1 ricerca = 2.0 crediti
-· 🎁 Partenza: 10 crediti gratis
+· 🔍 1 ricerca = 2 crediti
+· 🎁 Partenza: 4 crediti gratis
 · 🛒 Ricarica: /buy
 
 📈 STATISTICHE: /balance
 📋 MENU COMPLETO: /menu
 🛒 ACQUISTA: /buy
-🛡️ ADMIN: /admin (solo admin)
-➕ AGGIUNGI CREDITI: /addcredits (solo admin)
 
 ⏰ {now.hour:02d}:{now.minute:02d}
 
@@ -3625,7 +3623,7 @@ Errore: {str(e)[:100]}
         if not query:
             return
         
-        if not await self.update_balance(user_id, 2.0):
+        if not await self.update_balance(user_id, 2):
             user_lang = self.get_user_language(user_id)
             await update.message.reply_text(
                 translations[user_lang]['insufficient_credits']
