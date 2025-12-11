@@ -1757,7 +1757,7 @@ class LeakosintBot:
 💳 Sistema Credit:
 💰 Crediti attuali: {balance:.1f}
 🔍 Ricerche effettuate: {searches}
-🎯 Ricerche disponibili: {int(balance / 2.0)}
+🎯 Ricerche disponibili: {int(balance / 2)}
 📊 Abbonamento: {sub_type}
 
 ⚙️ Configurazioni:
@@ -1933,7 +1933,7 @@ Il cambio lingua influenzerà:
 · AA1234567 Via Roma 123
 · Mario Rossi 123456789 Milano
 
-💰 Crediti disponibili: {self.get_user_balance(user_id):.1f} 📊Ricerche effettuate: {self.get_user_searches(user_id)}
+💰 Crediti disponibili: {self.get_user_balance(user_id)} 📊Ricerche effettuate: {self.get_user_searches(user_id)}
 
 📩 Inviami qualsiasi dato per iniziare la ricerca.
 
@@ -2027,7 +2027,7 @@ Il cambio lingua influenzerà:
 · AA1234567 Via Roma 123
 · Mario Rossi 123456789 Milano
 
-💰 Available credits: {self.get_user_balance(user_id):.1f} 📊Searches performed: {self.get_user_searches(user_id)}
+💰 Available credits: {self.get_user_balance(user_id)} 📊Searches performed: {self.get_user_searches(user_id)}
 
 📩 Send me any data to start searching.
 
@@ -2425,7 +2425,7 @@ Query: {query}
 Errore: {str(e)[:100]}
 
 ⏰ {datetime.now().hour:02d}:{datetime.now().minute:02d}
----
+
 {data_italiana}"""
             try:
                 await msg.edit_text(error_text)
@@ -3344,7 +3344,7 @@ Errore: {str(e)[:100]}
 · Massimo 50 righe
 · Formato UTF-8
 
-💰 Crediti disponibili: {self.get_user_balance(user_id):.1f}
+💰 Crediti disponibili: {self.get_user_balance(user_id)}
 📊 Ricerche effettuate: {self.get_user_searches(user_id)}
 
 ⏰ {now.hour:02d}:{now.minute:02d}
@@ -3375,9 +3375,9 @@ Errore: {str(e)[:100]}
         text = f"""💰 CREDITI DISPONIBILI
 
 💎 Saldo attuale: {balance:.1f} crediti
-🔍 Costo per ricerca: 2.0 crediti
+🔍 Costo per ricerca: 2 crediti
 📊 Ricerche effettuate: {searches}
-🎯 Ricerche disponibili: {int(balance / 2.0)}
+🎯 Ricerche disponibili: {int(balance / 2)}
 
 🛒 Per acquistare crediti: /buy
 🔍 Per una ricerca: invia qualsiasi dato
@@ -3609,7 +3609,7 @@ Errore: {str(e)[:100]}
    · Seleziona il file .txt
    · Attendi l'elaborazione
 
-💰 COSTO: 2.0 crediti per riga
+💰 COSTO: 2 crediti per riga
 
 ⏰ {now.hour:02d}:{now.minute:02d}
 
