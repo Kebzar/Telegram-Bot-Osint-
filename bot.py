@@ -3471,7 +3471,7 @@ Errore: {str(e)[:100]}
                 
                 await update.message.reply_text(
                     f"✅ Aggiunti {amount} crediti all'utente {target_user_id}\n"
-                    f"💎 Nuovo saldo: {new_balance:.1f} crediti"
+                    f"💎 Nuovo saldo: {new_balance} crediti"
                 )
                 
                 try:
@@ -3782,10 +3782,10 @@ Query: {query}
 
 📄 File: {document.file_name}
 📊 Righe: {len(lines)}
-💰 Costo totale: {total_cost:.1f} crediti
-💳 Saldo attuale: {current_balance:.1f} crediti
+💰 Costo totale: {total_cost} crediti
+💳 Saldo attuale: {current_balance} crediti
 
-🔢 Ti servono: {total_cost - current_balance:.1f} crediti in più
+🔢 Ti servono: {total_cost - current_balance} crediti in più
 🛒 Usa /buy per acquistare crediti
 
 ⏰ {datetime.now().hour:02d}:{datetime.now().minute:02d}
@@ -3855,8 +3855,8 @@ Query: {query}
 📊 Righe processate: {len(lines)}
 ✅ Ricerche riuscite: {success_count}
 ❌ Errori: {error_count}
-💰 Costo totale: {total_cost:.1f} crediti
-💳 Nuovo saldo: {self.get_user_balance(user_id):.1f} crediti
+💰 Costo totale: {total_cost} crediti
+💳 Nuovo saldo: {self.get_user_balance(user_id)} crediti
 
 📝 RISULTATI DETTAGLIATI:
 """
