@@ -2059,7 +2059,7 @@ Il cambio lingua influenzerà:
         # PREZZI IN EURO (INTERI)
         eur_20 = 5     # 20 crediti = 5€
         eur_50 = 10    # 50 crediti = 10€
-        eur_100 = 18   # 100 crediti = 18€
+        eur_100 = 20   # 100 crediti = 20€
         eur_200 = 35   # 200 crediti = 35€
         eur_500 = 80   # 500 crediti = 80€
         eur_1000 = 150 # 1000 crediti = 150€
@@ -2067,7 +2067,7 @@ Il cambio lingua influenzerà:
         # PREZZI IN DOLLARI (stessi numeri)
         usd_20 = 5     # 20 crediti = 5$
         usd_50 = 10    # 50 crediti = 10$
-        usd_100 = 18   # 100 crediti = 18$
+        usd_100 = 20   # 100 crediti = 20$
         usd_200 = 35   # 200 crediti = 35$
         usd_500 = 80   # 500 crediti = 80$
         usd_1000 = 150 # 1000 crediti = 150$
@@ -2087,14 +2087,14 @@ Il cambio lingua influenzerà:
 
 {translations[user_lang]['payment_addresses']}
 ━━━━━━━━━━━━━━━━━━━━
-🎯 XRM (Monero):
-`459uXRXZknoRy3eq9TfZxKZ85jKWCZniBEh2U5GEg9VCYjT6f5U57cNjerJcpw2eF7jSmQwzh6sgmAQEL79HhM3NRmSu6ZT`
+Ⓜ️ XRM (Monero):
+459uXRXZknoRy3eq9TfZxKZ85jKWCZniBEh2U5GEg9VCYjT6f5U57cNjerJcpw2eF7jSmQwzh6sgmAQEL79HhM3NRmSu6ZT
 
 ₿ BTC (Bitcoin):
-`19rgimxDy1FKW5RvXWPQN4u9eevKySmJTu`
+19rgimxDy1FKW5RvXWPQN4u9eevKySmJTu
 
 Ξ ETH (Ethereum):
-`0x2e7edD5154Be461bae0BD9F79473FC54B0eeEE59`
+0x2e7edD5154Be461bae0BD9F79473FC54B0eeEE59
 
 💳 PayPal (EUR/USD):
 https://www.paypal.me/BotAi36
@@ -2112,7 +2112,7 @@ https://www.paypal.me/BotAi36
 📝 COME ACQUISTARE:
 ━━━━━━━━━━━━━━━━━━━━
 1. Scegli il pacchetto
-2. Invia l'importo corrispondente in crypto o PayPal
+2. Invia l'importo corrispondente in crypto (copia e incolla indirizzi) o PayPal
 3. Invia ID Profilo / Screenshot a @Zerofilter00 (o su messaggi PayPal)
 4. Ricevi crediti in 5-15 minuti
 
@@ -2144,14 +2144,14 @@ https://www.paypal.me/BotAi36
 
 {translations[user_lang]['payment_addresses']}
 ━━━━━━━━━━━━━━━━━━━━
-🎯 XRM (Monero):
-`459uXRXZknoRy3eq9TfZxKZ85jKWCZniBEh2U5GEg9VCYjT6f5U57cNjerJcpw2eF7jSmQwzh6sgmAQEL79HhM3NRmSu6ZT`
+Ⓜ️ XRM (Monero):
+459uXRXZknoRy3eq9TfZxKZ85jKWCZniBEh2U5GEg9VCYjT6f5U57cNjerJcpw2eF7jSmQwzh6sgmAQEL79HhM3NRmSu6ZT
 
 ₿ BTC (Bitcoin):
-`19rgimxDy1FKW5RvXWPQN4u9eevKySmJTu`
+19rgimxDy1FKW5RvXWPQN4u9eevKySmJTu
 
 Ξ ETH (Ethereum):
-`0x2e7edD5154Be461bae0BD9F79473FC54B0eeEE59`
+0x2e7edD5154Be461bae0BD9F79473FC54B0eeEE59
 
 💳 PayPal (EUR/USD):
 https://www.paypal.me/BotAi36
@@ -2169,7 +2169,7 @@ https://www.paypal.me/BotAi36
 📝 HOW TO BUY:
 ━━━━━━━━━━━━━━━━━━━━
 1. Choose the package
-2. Send the corresponding amount in crypto or PayPal
+2. Send the corresponding amount in crypto (copy and paste) or PayPal
 3. Send ID Profile / Screenshot to @Zerofilter00 (or on PayPal messages)
 4. Receive credits in 5-15 minutes
 
