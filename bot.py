@@ -230,7 +230,7 @@ c.execute('''CREATE TABLE IF NOT EXISTS users (
     registration_date TEXT DEFAULT CURRENT_TIMESTAMP,
     subscription_type TEXT DEFAULT 'free',
     last_active TEXT DEFAULT CURRENT_TIMESTAMP,
-    language TEXT DEFAULT 'en'
+    language TEXT DEFAULT 'en'  -- CAMBIATO DA 'it' A 'en'
 )''')
 
 c.execute('''CREATE TABLE IF NOT EXISTS searches (
@@ -1548,8 +1548,8 @@ class LeakosintBot:
     def get_user_language(self, user_id: int) -> str:
         c.execute('SELECT language FROM users WHERE user_id = ?', (user_id,))
         result = c.fetchone()
-        return result[0] if result and result[0] else 'en'
-
+        return result[0] if result and result[0] else 'en'  # Default a 'en'
+    
     def set_user_language(self, user_id: int, language: str):
         c.execute('UPDATE users SET language = ? WHERE user_id = ?', (language, user_id))
         conn.commit()
@@ -1572,12 +1572,12 @@ class LeakosintBot:
         user_lang = self.get_user_language(user_id)
         
         keyboard = [
-            [InlineKeyboardButton(translations[user_lang]['🔍search'], callback_data='ricerca')],
-            [InlineKeyboardButton(translations[user_lang]['shop💸'], callback_data='shop_button')],
-            [InlineKeyboardButton(translations[user_lang]['⚙️settings'], callback_data='impostazioni')],
-            [InlineKeyboardButton(translations[user_lang]['📋menu'], callback_data='menu_button')],
-            [InlineKeyboardButton(translations[user_lang]['help❓'], callback_data='help_button')],
-            [InlineKeyboardButton(translations[user_lang]['🌐language_btn'], callback_data='language_settings')]
+            [InlineKeyboardButton(translations[user_lang]['search'], callback_data='ricerca')],
+            [InlineKeyboardButton(translations[user_lang]['shop'], callback_data='shop_button')],
+            [InlineKeyboardButton(translations[user_lang]['settings'], callback_data='impostazioni')],
+            [InlineKeyboardButton(translations[user_lang]['menu'], callback_data='menu_button')],
+            [InlineKeyboardButton(translations[user_lang]['help'], callback_data='help_button')],
+            [InlineKeyboardButton(translations[user_lang]['language_btn'], callback_data='language_settings')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
@@ -1705,12 +1705,18 @@ class LeakosintBot:
         elif query.data == 'back_from_search':
             await self.show_search_menu(update, context)
             
+        elif query.data == 'buy_20':
+            await query.answer("Feature in sviluppo - Presto disponibile!", show_alert=True)
+            
+        elif query.data == 'buy_50':
+            await query.answer("Feature in sviluppo - Presto disponibile!", show_alert=True)
+            
         elif query.data == 'buy_100':
             await query.answer("Feature in sviluppo - Presto disponibile!", show_alert=True)
-    
+            
         elif query.data == 'buy_200':
             await query.answer("Feature in sviluppo - Presto disponibile!", show_alert=True)
-
+    
     async def show_settings(self, update: Update, context: CallbackContext):
         """Mostra le impostazioni utente"""
         query = update.callback_query
@@ -1763,7 +1769,7 @@ class LeakosintBot:
         
         keyboard = [
             [InlineKeyboardButton("🌐 Cambia Lingua", callback_data='language_settings')],
-            [[InlineKeyboardButton(translations[user_lang]['⬅️back'], callback_data='back_to_main')]]
+            [InlineKeyboardButton("🔙 Indietro", callback_data='back_to_main')]
         ]
         await query.edit_message_text(settings_text, reply_markup=InlineKeyboardMarkup(keyboard))
     
@@ -1802,16 +1808,16 @@ Il cambio lingua influenzerà:
         """Imposta la lingua per l'utente"""
         query = update.callback_query
         await query.answer()
-    
+        
         user_id = query.from_user.id
         self.set_user_language(user_id, language)
-    
+        
         # Usa il dizionario di traduzioni per il messaggio
         lang_name = translations[language]['language']
         confirm_text = translations[language]['lang_changed'].format(lang_name=lang_name.split()[0])
-    
+        
         await query.edit_message_text(confirm_text)
-    
+        
         # Ritorna al menu principale dopo 2 secondi
         await asyncio.sleep(2)
         await self.show_main_menu(update, context)
@@ -2344,10 +2350,10 @@ https://www.paypal.me/BotAi36
             return
         
         if not await self.update_balance(user_id, 2.0):
+            user_lang = self.get_user_language(user_id)
             await update.message.reply_text(
-                translations[self.get_user_language(user_id)]['❌insufficient_credits']
+                translations[user_lang]['insufficient_credits']
             )
-            
             return
         
         mesi = {
@@ -2358,8 +2364,8 @@ https://www.paypal.me/BotAi36
         now = datetime.now()
         data_italiana = f"{now.day} {mesi.get(now.month, 'novembre')}"
         
-        wait_text = f"""{translations[self.get_user_language(user_id)]['🔍processing']}
-
+        user_lang = self.get_user_language(user_id)
+        wait_text = f"""{translations[user_lang]['processing']}
 ⏰ {now.hour:02d}:{now.minute:02d}
 
 {data_italiana}"""
@@ -2403,7 +2409,8 @@ https://www.paypal.me/BotAi36
             
         except Exception as e:
             logger.error(f"Search error: {e}")
-            error_text = f"""{translations[self.get_user_language(user_id)]['❌error']}
+            user_lang = self.get_user_language(user_id)
+            error_text = f"""{translations[user_lang]['error']}
 Query: {query}
 Errore: {str(e)[:100]}
 
@@ -2610,8 +2617,9 @@ Errore: {str(e)[:100]}
             else:
                 result_text += f"\n  - Nessuna correlazione diretta trovata"
         
-        result_text += f"\n\n💰 Crediti usati: 2.0"
-        result_text += f"\n💳 Saldo: {self.get_user_balance(user_id):.1f}"
+        user_lang = self.get_user_language(user_id)
+        result_text += f"\n\n{translations[user_lang]['credits_used']} 2.0"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id):.1f}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n---\n{data_italiana}"
         
@@ -2632,6 +2640,7 @@ Errore: {str(e)[:100]}
 - {email} - Cerca la posta"""
         
         if search_results['found']:
+            user_lang = self.get_user_language(user_id)
             result_text += f"\n\n✅ RISULTATI TROVATI: {search_results['count']}"
             
             sources = {}
@@ -2655,11 +2664,13 @@ Errore: {str(e)[:100]}
                         result_text += f"\n    📅 Data: {entry.get('date', 'Unknown')}"
         
         else:
-            result_text += f"\n\n❌ NESSUN RISULTATO"
+            user_lang = self.get_user_language(user_id)
+            result_text += f"\n\n{translations[user_lang]['no_results']}"
             result_text += f"\n📭 L'email non è stata trovata nei database conosciuti."
         
-        result_text += f"\n\n💰 Crediti usati: 2.0"
-        result_text += f"\n💳 Saldo: {self.get_user_balance(user_id):.1f}"
+        user_lang = self.get_user_language(user_id)
+        result_text += f"\n\n{translations[user_lang]['credits_used']} 2.0"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id):.1f}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n---\n{data_italiana}"
         
@@ -2730,11 +2741,13 @@ Errore: {str(e)[:100]}
                         result_text += f"\n    👤 Nome: {result['name']}"
         
         else:
-            result_text += f"\n\n❌ NESSUN RISULTATO"
+            user_lang = self.get_user_language(user_id)
+            result_text += f"\n\n{translations[user_lang]['no_results']}"
             result_text += f"\n📵 Il numero non è stato trovato."
         
-        result_text += f"\n\n💰 Crediti usati: 2.0"
-        result_text += f"\n💳 Saldo: {self.get_user_balance(user_id):.1f}"
+        user_lang = self.get_user_language(user_id)
+        result_text += f"\n\n{translations[user_lang]['credits_used']} 2.0"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id):.1f}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n---\n{data_italiana}"
         
@@ -2776,11 +2789,13 @@ Errore: {str(e)[:100]}
                 result_text += f"\n  - {platform}: {social['url']}"
         
         if not search_results['found'] and social_results['social_count'] == 0:
-            result_text += f"\n\n❌ NESSUN RISULTATO"
+            user_lang = self.get_user_language(user_id)
+            result_text += f"\n\n{translations[user_lang]['no_results']}"
             result_text += f"\n👤 Il nome non è stato trovato."
         
-        result_text += f"\n\n💰 Crediti usati: 2.0"
-        result_text += f"\n💳 Saldo: {self.get_user_balance(user_id):.1f}"
+        user_lang = self.get_user_language(user_id)
+        result_text += f"\n\n{translations[user_lang]['credits_used']} 2.0"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id):.1f}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n---\n{data_italiana}"
         
@@ -2842,15 +2857,17 @@ Errore: {str(e)[:100]}
                     result_text += f"\n    🔐 Password: {breach['password'][:15]}..."
         
         if search_results['social_count'] == 0 and search_results['breach_count'] == 0:
-            result_text += f"\n\n❌ NESSUN RISULTATO"
+            user_lang = self.get_user_language(user_id)
+            result_text += f"\n\n{translations[user_lang]['no_results']}"
             result_text += f"\n👤 Username non trovato su nessuna piattaforma conosciuta."
             result_text += f"\n\n💡 PROVA CON:"
             result_text += f"\n  · Varianti: {username}123, real{username}"
             result_text += f"\n  · Nome completo: se contiene spazi"
             result_text += f"\n  · Email: se è un indirizzo email"
         
-        result_text += f"\n\n💰 Crediti usati: 2.0"
-        result_text += f"\n💳 Saldo: {self.get_user_balance(user_id):.1f}"
+        user_lang = self.get_user_language(user_id)
+        result_text += f"\n\n{translations[user_lang]['credits_used']} 2.0"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id):.1f}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n---\n{data_italiana}"
         
@@ -2891,8 +2908,9 @@ Errore: {str(e)[:100]}
                 ports = shodan_info['ports'][:5]
                 result_text += f"\n  - 🚪 Porte: {', '.join(map(str, ports))}"
         
-        result_text += f"\n\n💰 Crediti usati: 2.0"
-        result_text += f"\n💳 Saldo: {self.get_user_balance(user_id):.1f}"
+        user_lang = self.get_user_language(user_id)
+        result_text += f"\n\n{translations[user_lang]['credits_used']} 2.0"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id):.1f}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n---\n{data_italiana}"
         
@@ -2945,8 +2963,9 @@ Errore: {str(e)[:100]}
         result_text += f"\n\n📊 SICUREZZA: {strength}"
         result_text += f"\n📏 Lunghezza: {len(password)} caratteri"
         
-        result_text += f"\n\n💰 Crediti usati: 2.0"
-        result_text += f"\n💳 Saldo: {self.get_user_balance(user_id):.1f}"
+        user_lang = self.get_user_language(user_id)
+        result_text += f"\n\n{translations[user_lang]['credits_used']} 2.0"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id):.1f}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n---\n{data_italiana}"
         
@@ -2978,11 +2997,13 @@ Errore: {str(e)[:100]}
                 if result.get('email'):
                     result_text += f"\n    📧 Email: {result['email']}"
         else:
-            result_text += f"\n\n❌ HASH NON TROVATO"
+            user_lang = self.get_user_language(user_id)
+            result_text += f"\n\n{translations[user_lang]['no_results']}"
             result_text += f"\n🔑 Hash non presente nei database."
         
-        result_text += f"\n\n💰 Crediti usati: 2.0"
-        result_text += f"\n💳 Saldo: {self.get_user_balance(user_id):.1f}"
+        user_lang = self.get_user_language(user_id)
+        result_text += f"\n\n{translations[user_lang]['credits_used']} 2.0"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id):.1f}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n---\n{data_italiana}"
         
@@ -3026,7 +3047,8 @@ Errore: {str(e)[:100]}
                         result_text += f"\n    📧 Email: {entry['email']}"
         
         else:
-            result_text += f"\n\n❌ NESSUN RISULTATO"
+            user_lang = self.get_user_language(user_id)
+            result_text += f"\n\n{translations[user_lang]['no_results']}"
             result_text += f"\n📄 Il documento non è stato trovato nei database conosciuti."
         
         doc_type = "Sconosciuto"
@@ -3041,8 +3063,9 @@ Errore: {str(e)[:100]}
         
         result_text += f"\n\n📋 TIPO DOCUMENTO: {doc_type}"
         
-        result_text += f"\n\n💰 Crediti usati: 2.0"
-        result_text += f"\n💳 Saldo: {self.get_user_balance(user_id):.1f}"
+        user_lang = self.get_user_language(user_id)
+        result_text += f"\n\n{translations[user_lang]['credits_used']} 2.0"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id):.1f}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n---\n{data_italiana}"
         
@@ -3102,7 +3125,8 @@ Errore: {str(e)[:100]}
                         result_text += f"\n     👤 Persona: {company['full_name']}"
         
         else:
-            result_text += f"\n\n❌ NESSUN RISULTATO"
+            user_lang = self.get_user_language(user_id)
+            result_text += f"\n\n{translations[user_lang]['no_results']}"
             result_text += f"\n📍 L'indirizzo non è stato trovato nei database conosciuti."
             
             result_text += f"\n\n💡 SUGGERIMENTI:"
@@ -3110,8 +3134,9 @@ Errore: {str(e)[:100]}
             result_text += f"\n  - Per indirizzo lavorativo: 'Ufficio Via Torino 45'"
             result_text += f"\n  - Per indirizzo casa: 'Casa Via Verdi 12'"
         
-        result_text += f"\n\n💰 Crediti usati: 2.0"
-        result_text += f"\n💳 Saldo: {self.get_user_balance(user_id):.1f}"
+        user_lang = self.get_user_language(user_id)
+        result_text += f"\n\n{translations[user_lang]['credits_used']} 2.0"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id):.1f}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n---\n{data_italiana}"
         
@@ -3127,8 +3152,9 @@ Errore: {str(e)[:100]}
         """Ricerca Facebook completa"""
         now = datetime.now()
         
+        user_lang = self.get_user_language(user_id)
         result_text = f"""📘 RICERCA FACEBOOK COMPLETA
-- {query} - Analisi in corso..."""
+- {query} - {translations[user_lang]['processing']}"""
         
         try:
             await msg.edit_text(result_text)
@@ -3218,7 +3244,8 @@ Errore: {str(e)[:100]}
                 pass
         
         if total_results == 0:
-            result_text += f"\n\n❌ NESSUN RISULTATO DIRETTO"
+            user_lang = self.get_user_language(user_id)
+            result_text += f"\n\n{translations[user_lang]['no_results']}"
             result_text += f"\n📘 Facebook ha limitato le ricerche pubbliche."
             result_text += f"\n💡 Suggerimenti:"
             result_text += f"\n  - Cerca con numero telefono: +39XXXXXXXXXX"
@@ -3231,8 +3258,9 @@ Errore: {str(e)[:100]}
         result_text += f"\n  - 👥 Cerca su LinkedIn"
         result_text += f"\n  - 📧 Cerca con email associata"
         
-        result_text += f"\n\n💰 Crediti usati: 2.0"
-        result_text += f"\n💳 Saldo: {self.get_user_balance(user_id):.1f}"
+        user_lang = self.get_user_language(user_id)
+        result_text += f"\n\n{translations[user_lang]['credits_used']} 2.0"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id):.1f}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n---\n{data_italiana}"
         
@@ -3247,6 +3275,7 @@ Errore: {str(e)[:100]}
     async def menu_completo(self, update: Update, context: CallbackContext):
         """Mostra il menu completo"""
         user_id = update.effective_user.id
+        user_lang = self.get_user_language(user_id)
         
         now = datetime.now()
         mesi = {
@@ -3256,7 +3285,9 @@ Errore: {str(e)[:100]}
         }
         data_italiana = f"{now.day} {mesi.get(now.month, 'novembre')}"
         
-        menu_text = f"""📝 RICERCHE COMPOSTE SUPPORTATE:
+        menu_text = f"""{translations[user_lang]['menu_title']}
+
+{translations[user_lang]['composite_examples']}
 
 📌 Email + Telefono + Nome:
 · example@gmail.com +79002206090 Petrov Ivan
@@ -3286,7 +3317,7 @@ Errore: {str(e)[:100]}
 · AA1234567 Via Roma 123 Mario Rossi
 · 123456789 Milano Luigi Bianchi
 
-🔍 PUOI COMBINARE:
+{translations[user_lang]['combine_what']}
 · Email: example@
 · Telefono: +39, +7, +44
 · Nomi: Nome, Cognome, Completo
@@ -3298,7 +3329,7 @@ Errore: {str(e)[:100]}
 · Indirizzi: Casa, Ufficio, Azienda
 · Date: GG/MM/AAAA
 
-📋 RICERCA DI MASSA:
+{translations[user_lang]['mass_search']}
 · /utf8 per istruzioni file
 · Massimo 50 righe
 · Formato UTF-8
@@ -3310,7 +3341,7 @@ Errore: {str(e)[:100]}
 
 {data_italiana}"""
         
-        keyboard = [[InlineKeyboardButton("🔙 Indietro", callback_data='back_to_main')]]
+        keyboard = [[InlineKeyboardButton(translations[user_lang]['back'], callback_data='back_to_main')]]
         
         if update.callback_query:
             await update.callback_query.edit_message_text(menu_text, reply_markup=InlineKeyboardMarkup(keyboard))
@@ -3585,8 +3616,9 @@ Errore: {str(e)[:100]}
             return
         
         if not await self.update_balance(user_id, 2.0):
+            user_lang = self.get_user_language(user_id)
             await update.message.reply_text(
-                "❌ Crediti insufficienti! Usa /buy per acquistare crediti."
+                translations[user_lang]['insufficient_credits']
             )
             return
         
@@ -3598,7 +3630,8 @@ Errore: {str(e)[:100]}
         now = datetime.now()
         data_italiana = f"{now.day} {mesi.get(now.month, 'novembre')}"
         
-        wait_text = f"""🔍 Analisi social media in corso...
+        user_lang = self.get_user_language(user_id)
+        wait_text = f"""🔍 {translations[user_lang]['processing']}
 
 ⏰ {now.hour:02d}:{now.minute:02d}
 
@@ -3628,7 +3661,8 @@ Errore: {str(e)[:100]}
             
         except Exception as e:
             logger.error(f"Social search error: {e}")
-            error_text = f"""❌ Errore durante la ricerca social
+            user_lang = self.get_user_language(user_id)
+            error_text = f"""{translations[user_lang]['error']}
 Query: {query}
 
 ⏰ {datetime.now().hour:02d}:{datetime.now().minute:02d}
@@ -3657,8 +3691,9 @@ Query: {query}
             return
         
         if self.get_user_balance(user_id) < 2.0:
+            user_lang = self.get_user_language(user_id)
             await update.message.reply_text(
-                "❌ Crediti insufficienti! Usa /buy per acquistare crediti."
+                translations[user_lang]['insufficient_credits']
             )
             return
         
