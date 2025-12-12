@@ -45,7 +45,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ==================== CONFIGURAZIONE API ====================
-BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
+BOT_TOKEN = "8464402911:AAGhLLYRF2HOf6DTCXsbK7Ry6kHFSB9kPnw"
 ADMIN_ID = 123456789  # Il tuo ID Telegram
 
 # API Keys REALI (sostituire con le tue)
