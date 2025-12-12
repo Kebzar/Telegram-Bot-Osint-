@@ -2361,47 +2361,72 @@ https://www.paypal.me/BotAi36
         return 'name'
     
     async def handle_message(self, update: Update, context: CallbackContext):
-        """Gestisce tutti i messaggi di ricerca - Supporta query composte"""
+    """Gestisce tutti i messaggi di ricerca - CORRETTO"""
+    try:
         user_id = update.effective_user.id
         query = update.message.text.strip()
         
-        if not query:
+        logger.info(f"📥 Ricevuta query da user {user_id}: {query[:50]}")
+        
+        if not query or len(query) < 2:
+            await update.message.reply_text("❌ Query troppo corta. Invia almeno 2 caratteri.")
             return
         
-        if query.startswith('/'):
-            return
-        
-        if not await self.update_balance(user_id, 2):
+        # Controlla crediti
+        current_balance = self.get_user_balance(user_id)
+        if current_balance < 2:
             user_lang = self.get_user_language(user_id)
-            await update.message.reply_text(
-                translations[user_lang]['insufficient_credits']
-            )
+            await update.message.reply_text(translations[user_lang]['insufficient_credits'])
             return
         
+        # Messaggio di attesa
+        now = datetime.now()
         mesi = {
             1: 'gennaio', 2: 'febbraio', 3: 'marzo', 4: 'aprile',
             5: 'maggio', 6: 'giugno', 7: 'luglio', 8: 'agosto',
             9: 'settembre', 10: 'ottobre', 11: 'novembre', 12: 'dicembre'
         }
-        now = datetime.now()
         data_italiana = f"{now.day} {mesi.get(now.month, 'novembre')}"
         
         user_lang = self.get_user_language(user_id)
-        wait_text = f"""{translations[user_lang]['processing']}
+        wait_text = f"""🔍 {translations[user_lang]['processing']}
+        
+Query: {query[:50]}{'...' if len(query) > 50 else ''}
+
 ⏰ {now.hour:02d}:{now.minute:02d}
 
 {data_italiana}"""
         
-        msg = await update.message.reply_text(wait_text)
-        
+        # Invia messaggio di attesa
         try:
-            components = self.parse_composite_query(query)
-            total_components = sum(len(v) for v in components.values())
+            msg = await update.message.reply_text(wait_text)
+        except Exception as e:
+            logger.error(f"Errore invio messaggio: {e}")
+            await update.message.reply_text("❌ Errore iniziale. Riprova.")
+            return
+        
+        # Processa la ricerca
+        try:
+            await self.process_search(update, msg, query, user_id, data_italiana)
+        except Exception as e:
+            logger.error(f"Errore ricerca: {e}")
+            error_text = f"""❌ Errore durante la ricerca
+                
+🔧 Dettaglio: {str(e)[:200]}
+                
+💡 Riprova con una query diversa.
+
+⏰ {datetime.now().hour:02d}:{datetime.now().minute:02d}
+
+{data_italiana}"""
+            try:
+                await msg.edit_text(error_text)
+            except:
+                await update.message.reply_text(error_text[:4000])
             
-            if total_components >= 2:
-                await self.search_composite_advanced(update, msg, query, user_id, data_italiana)
-            else:
-                search_type = self.detect_search_type(query)
+    except Exception as e:
+        logger.error(f"Errore generale handle_message: {e}")
+        await update.message.reply_text("❌ Errore interno. Riprova più tardi.")
                 
                 if any(keyword in query.lower() for keyword in ['facebook', 'fb', 'face', 'フェイスブック']):
                     search_type = 'facebook'
