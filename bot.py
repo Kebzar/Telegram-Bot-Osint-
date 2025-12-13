@@ -70,14 +70,13 @@ SOCIALSEARCH_API_KEY = os.environ.get('SOCIALSEARCH_API_KEY', '')
 FBSCRAPER_API_KEY = os.environ.get('FBSCRAPER_API_KEY', '')
 
 # ==================== API OSINT POTENZIATE ====================
-# MODIFICA: URL Whatsmyname alternativo in caso di problemi
-WHATSMYNAME_API_URLS = [
-    "https://api.whatsmyname.app/v0",
-    "https://whatsmyname.glitch.me/v0"  # Backup alternativo
-]
+# RIMOSSO: WHATSMYNAME_API_URL = "https://api.whatsmyname.app/v0"  # Questa API non è più disponibile
 INSTANTUSERNAME_API = "https://api.instantusername.com/v1"
 NAMEAPI_KEY = os.environ.get('NAMEAPI_KEY', '')
 SOCIAL_SEARCHER_KEY = os.environ.get('SOCIAL_SEARCHER_KEY', '')
+
+# Nuovo servizio alternativo a Whatsmyname
+NAMEAPI_SOCIAL_URL = "https://api.nameapi.org/rest/v5.3/username/search"
 
 # ==================== SISTEMA LINGUE ====================
 translations = {
@@ -203,7 +202,7 @@ translations = {
         # Menu completo
         'menu_title': '📝 COMPOSITE SEARCHES SUPPORTED:',
         'composite_examples': '📌 Composite search examples:',
-        'combine_what': '🔍 YOU CAN COMBINE:',
+        'combine_what': '🔍 YOU CAN COMBINATE:',
         'mass_search': '📋 MASS SEARCH:',
         
         # Bot risposte
@@ -238,7 +237,7 @@ c.execute('''CREATE TABLE IF NOT EXISTS users (
     registration_date TEXT DEFAULT CURRENT_TIMESTAMP,
     subscription_type TEXT DEFAULT 'free',
     last_active TEXT DEFAULT CURRENT_TIMESTAMP,
-    language TEXT DEFAULT 'en'  -- CAMBIATO DA 'it' A 'en'
+    language TEXT DEFAULT 'en'
 )''')
 
 c.execute('''CREATE TABLE IF NOT EXISTS searches (
@@ -281,7 +280,6 @@ c.execute('''CREATE TABLE IF NOT EXISTS facebook_leaks (
     found_date DATETIME DEFAULT CURRENT_TIMESTAMP
 )''')
 
-# NUOVA TABELLA PER INDIRIZZI E DOCUMENTI
 c.execute('''CREATE TABLE IF NOT EXISTS addresses_documents (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     document_number TEXT,
@@ -739,29 +737,6 @@ class LeakSearchAPI:
         social_results = []
         breach_results = []
         
-        # ============ API WHATSMYNAME (GRATIS, SENZA KEY) ============
-        # MODIFICA: Prova URL alternativi in caso di fallimento
-        for api_url in WHATSMYNAME_API_URLS:
-            try:
-                whatsmyname_url = f"{api_url}/identities/{quote_plus(username)}"
-                response = self.session.get(whatsmyname_url, timeout=10)
-                if response.status_code == 200:
-                    data = response.json()
-                    if data.get('sites'):
-                        for site in data['sites'][:20]:  # Limita a 20 siti
-                            if site.get('status') == 'claimed':
-                                social_results.append({
-                                    'platform': f"🌐 {site.get('name', 'Unknown')}",
-                                    'url': site.get('url', ''),
-                                    'exists': True,
-                                    'source': 'Whatsmyname API',
-                                    'claimed': True
-                                })
-                        break  # Se funziona, esci dal ciclo
-            except Exception as e:
-                logger.warning(f"Whatsmyname API {api_url} error: {e}")
-                continue  # Prova il prossimo URL
-        
         # ============ API INSTANTUSERNAME (GRATIS) ============
         try:
             instant_url = f"{INSTANTUSERNAME_API}/check/{quote_plus(username)}"
@@ -783,13 +758,12 @@ class LeakSearchAPI:
         # ============ API NAMEAPI (SE C'È API KEY) ============
         if NAMEAPI_KEY:
             try:
-                nameapi_url = f"https://api.nameapi.org/rest/v5.3/username/search"
                 params = {
                     'apiKey': NAMEAPI_KEY,
                     'username': username,
                     'context': 'social'
                 }
-                response = self.session.get(nameapi_url, params=params, timeout=10)
+                response = self.session.get(NAMEAPI_SOCIAL_URL, params=params, timeout=10)
                 if response.status_code == 200:
                     data = response.json()
                     if data.get('matches'):
@@ -911,28 +885,13 @@ class LeakSearchAPI:
     async def search_username_advanced(self, username: str) -> Dict:
         """Ricerca avanzata username con tutte le API disponibili"""
         all_results = {
-            'whatsmyname': [],
             'instantusername': [],
             'manual': [],
             'breach': [],
             'variants': []
         }
         
-        # 1. Whatsmyname (completo) - MODIFICA: Usa URL alternativi
-        for api_url in WHATSMYNAME_API_URLS:
-            try:
-                response = self.session.get(
-                    f"{api_url}/identities/{quote_plus(username)}",
-                    timeout=15
-                )
-                if response.status_code == 200:
-                    data = response.json()
-                    all_results['whatsmyname'] = data.get('sites', [])
-                    break  # Se funziona, esci dal ciclo
-            except:
-                continue
-        
-        # 2. Ricerca varianti (username simili)
+        # 1. Ricerca varianti (username simili)
         username_lower = username.lower()
         common_variants = [
             username_lower,
@@ -943,20 +902,15 @@ class LeakSearchAPI:
         ]
         
         for variant in common_variants[:3]:
-            for api_url in WHATSMYNAME_API_URLS:
-                try:
-                    variant_url = f"{api_url}/identities/{quote_plus(variant)}"
-                    response = self.session.get(variant_url, timeout=5)
-                    if response.status_code == 200:
-                        data = response.json()
-                        if data.get('sites'):
-                            all_results['variants'].append({
-                                'variant': variant,
-                                'sites': data['sites'][:5]
-                            })
-                            break
-                except:
-                    continue
+            try:
+                variant_results = await self.search_username(variant)
+                if variant_results['social_count'] > 0:
+                    all_results['variants'].append({
+                        'variant': variant,
+                        'count': variant_results['social_count']
+                    })
+            except:
+                continue
         
         return all_results
     
@@ -1016,30 +970,19 @@ class LeakSearchAPI:
             except Exception as e:
                 logger.error(f"AbuseIPDB error: {e}")
         
-        # MODIFICA: Gestione migliore di Shodan API
         if SHODAN_API_KEY:
             try:
                 api = shodan.Shodan(SHODAN_API_KEY)
-                try:
-                    shodan_info = api.host(ip)
-                    info['shodan'] = {
-                        'ports': shodan_info.get('ports', []),
-                        'hostnames': shodan_info.get('hostnames', []),
-                        'org': shodan_info.get('org', ''),
-                        'isp': shodan_info.get('isp', '')
-                    }
-                except shodan.APIError as e:
-                    if "No information available" in str(e):
-                        info['shodan'] = {'error': 'No information available for this IP'}
-                    elif "Access denied" in str(e) or "403" in str(e):
-                        info['shodan'] = {'error': 'Shodan API access denied - check your API key'}
-                    else:
-                        info['shodan'] = {'error': str(e)}
+                shodan_info = api.host(ip)
+                info['shodan'] = {
+                    'ports': shodan_info.get('ports', []),
+                    'hostnames': shodan_info.get('hostnames', []),
+                    'org': shodan_info.get('org', ''),
+                    'isp': shodan_info.get('isp', '')
+                }
             except Exception as e:
-                logger.error(f"Shodan error: {e}")
-                info['shodan'] = {'error': 'Shodan API error - check your API key and network connection'}
-        else:
-            info['shodan'] = {'error': 'Shodan API key not configured'}
+                # Log ma non blocca l'esecuzione se Shodan fallisce
+                logger.warning(f"Shodan non disponibile: {e}")
         
         return info
     
@@ -2070,7 +2013,6 @@ Il cambio lingua influenzerà:
         else:
             await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
-
     async def show_shop_interface(self, update: Update, context: CallbackContext):
         """Mostra l'interfaccia di acquisto crediti con prezzi interi"""
         user_id = update.effective_user.id
@@ -2238,7 +2180,6 @@ https://www.paypal.me/BotAi36
             await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
         else:
             await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-
     
     async def start(self, update: Update, context: CallbackContext):
         """Comando start - Mostra il menu principale con interfaccia"""
@@ -2855,14 +2796,11 @@ Errore: {str(e)[:100]}
     
     async def search_social_exact(self, update: Update, msg, username: str, user_id: int, data_italiana: str):
         """Ricerca username - Formato esatto con API potenziate"""
-        # PRIMA usa le nuove API
         search_results = await self.api.search_username(username)
-        # POI ricerca avanzata
-        advanced_results = await self.api.search_username_advanced(username)
         
         now = datetime.now()
         result_text = f"""👥 RICERCA USERNAME AVANZATA
-- {username} - Analisi su 300+ piattaforme"""
+- {username} - Analisi su piattaforme social"""
         
         # Statistiche
         api_sources = search_results.get('api_sources', [])
@@ -2873,7 +2811,7 @@ Errore: {str(e)[:100]}
             
             # Raggruppa per piattaforma principale
             platforms = {}
-            for social in search_results['social'][:15]:  # Limita a 15
+            for social in search_results['social'][:15]:
                 platform = social['platform']
                 if platform not in platforms:
                     platforms[platform] = []
@@ -2885,13 +2823,6 @@ Errore: {str(e)[:100]}
                     result_text += f"\n  🔗 {account['url']}"
                     if account.get('source'):
                         result_text += f" ({account['source']})"
-        
-        # Varianti trovate
-        if advanced_results.get('variants'):
-            result_text += f"\n\n🔍 VARIANTI TROVATE:"
-            for variant in advanced_results['variants'][:3]:
-                if variant.get('sites'):
-                    result_text += f"\n  · {variant['variant']}: {len(variant['sites'])} siti"
         
         if search_results['breach_count'] > 0:
             result_text += f"\n\n🔓 DATA BREACH TROVATI: {search_results['breach_count']}"
@@ -2953,8 +2884,6 @@ Errore: {str(e)[:100]}
             if shodan_info.get('ports'):
                 ports = shodan_info['ports'][:5]
                 result_text += f"\n  - 🚪 Porte: {', '.join(map(str, ports))}"
-            elif shodan_info.get('error'):
-                result_text += f"\n  - ⚠️ Shodan: {shodan_info['error']}"
         
         user_lang = self.get_user_language(user_id)
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
