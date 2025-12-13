@@ -70,7 +70,11 @@ SOCIALSEARCH_API_KEY = os.environ.get('SOCIALSEARCH_API_KEY', '')
 FBSCRAPER_API_KEY = os.environ.get('FBSCRAPER_API_KEY', '')
 
 # ==================== API OSINT POTENZIATE ====================
-WHATSMYNAME_API_URL = "https://api.whatsmyname.app/v0"
+# MODIFICA: URL Whatsmyname alternativo in caso di problemi
+WHATSMYNAME_API_URLS = [
+    "https://api.whatsmyname.app/v0",
+    "https://whatsmyname.glitch.me/v0"  # Backup alternativo
+]
 INSTANTUSERNAME_API = "https://api.instantusername.com/v1"
 NAMEAPI_KEY = os.environ.get('NAMEAPI_KEY', '')
 SOCIAL_SEARCHER_KEY = os.environ.get('SOCIAL_SEARCHER_KEY', '')
@@ -736,23 +740,27 @@ class LeakSearchAPI:
         breach_results = []
         
         # ============ API WHATSMYNAME (GRATIS, SENZA KEY) ============
-        try:
-            whatsmyname_url = f"{WHATSMYNAME_API_URL}/identities/{quote_plus(username)}"
-            response = self.session.get(whatsmyname_url, timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                if data.get('sites'):
-                    for site in data['sites'][:20]:  # Limita a 20 siti
-                        if site.get('status') == 'claimed':
-                            social_results.append({
-                                'platform': f"🌐 {site.get('name', 'Unknown')}",
-                                'url': site.get('url', ''),
-                                'exists': True,
-                                'source': 'Whatsmyname API',
-                                'claimed': True
-                            })
-        except Exception as e:
-            logger.error(f"Whatsmyname API error: {e}")
+        # MODIFICA: Prova URL alternativi in caso di fallimento
+        for api_url in WHATSMYNAME_API_URLS:
+            try:
+                whatsmyname_url = f"{api_url}/identities/{quote_plus(username)}"
+                response = self.session.get(whatsmyname_url, timeout=10)
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get('sites'):
+                        for site in data['sites'][:20]:  # Limita a 20 siti
+                            if site.get('status') == 'claimed':
+                                social_results.append({
+                                    'platform': f"🌐 {site.get('name', 'Unknown')}",
+                                    'url': site.get('url', ''),
+                                    'exists': True,
+                                    'source': 'Whatsmyname API',
+                                    'claimed': True
+                                })
+                        break  # Se funziona, esci dal ciclo
+            except Exception as e:
+                logger.warning(f"Whatsmyname API {api_url} error: {e}")
+                continue  # Prova il prossimo URL
         
         # ============ API INSTANTUSERNAME (GRATIS) ============
         try:
@@ -910,17 +918,19 @@ class LeakSearchAPI:
             'variants': []
         }
         
-        # 1. Whatsmyname (completo)
-        try:
-            response = self.session.get(
-                f"https://api.whatsmyname.app/v0/identities/{quote_plus(username)}",
-                timeout=15
-            )
-            if response.status_code == 200:
-                data = response.json()
-                all_results['whatsmyname'] = data.get('sites', [])
-        except:
-            pass
+        # 1. Whatsmyname (completo) - MODIFICA: Usa URL alternativi
+        for api_url in WHATSMYNAME_API_URLS:
+            try:
+                response = self.session.get(
+                    f"{api_url}/identities/{quote_plus(username)}",
+                    timeout=15
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    all_results['whatsmyname'] = data.get('sites', [])
+                    break  # Se funziona, esci dal ciclo
+            except:
+                continue
         
         # 2. Ricerca varianti (username simili)
         username_lower = username.lower()
@@ -933,18 +943,20 @@ class LeakSearchAPI:
         ]
         
         for variant in common_variants[:3]:
-            try:
-                variant_url = f"https://api.whatsmyname.app/v0/identities/{quote_plus(variant)}"
-                response = self.session.get(variant_url, timeout=5)
-                if response.status_code == 200:
-                    data = response.json()
-                    if data.get('sites'):
-                        all_results['variants'].append({
-                            'variant': variant,
-                            'sites': data['sites'][:5]
-                        })
-            except:
-                continue
+            for api_url in WHATSMYNAME_API_URLS:
+                try:
+                    variant_url = f"{api_url}/identities/{quote_plus(variant)}"
+                    response = self.session.get(variant_url, timeout=5)
+                    if response.status_code == 200:
+                        data = response.json()
+                        if data.get('sites'):
+                            all_results['variants'].append({
+                                'variant': variant,
+                                'sites': data['sites'][:5]
+                            })
+                            break
+                except:
+                    continue
         
         return all_results
     
@@ -1004,18 +1016,30 @@ class LeakSearchAPI:
             except Exception as e:
                 logger.error(f"AbuseIPDB error: {e}")
         
+        # MODIFICA: Gestione migliore di Shodan API
         if SHODAN_API_KEY:
             try:
                 api = shodan.Shodan(SHODAN_API_KEY)
-                shodan_info = api.host(ip)
-                info['shodan'] = {
-                    'ports': shodan_info.get('ports', []),
-                    'hostnames': shodan_info.get('hostnames', []),
-                    'org': shodan_info.get('org', ''),
-                    'isp': shodan_info.get('isp', '')
-                }
+                try:
+                    shodan_info = api.host(ip)
+                    info['shodan'] = {
+                        'ports': shodan_info.get('ports', []),
+                        'hostnames': shodan_info.get('hostnames', []),
+                        'org': shodan_info.get('org', ''),
+                        'isp': shodan_info.get('isp', '')
+                    }
+                except shodan.APIError as e:
+                    if "No information available" in str(e):
+                        info['shodan'] = {'error': 'No information available for this IP'}
+                    elif "Access denied" in str(e) or "403" in str(e):
+                        info['shodan'] = {'error': 'Shodan API access denied - check your API key'}
+                    else:
+                        info['shodan'] = {'error': str(e)}
             except Exception as e:
                 logger.error(f"Shodan error: {e}")
+                info['shodan'] = {'error': 'Shodan API error - check your API key and network connection'}
+        else:
+            info['shodan'] = {'error': 'Shodan API key not configured'}
         
         return info
     
@@ -2929,6 +2953,8 @@ Errore: {str(e)[:100]}
             if shodan_info.get('ports'):
                 ports = shodan_info['ports'][:5]
                 result_text += f"\n  - 🚪 Porte: {', '.join(map(str, ports))}"
+            elif shodan_info.get('error'):
+                result_text += f"\n  - ⚠️ Shodan: {shodan_info['error']}"
         
         user_lang = self.get_user_language(user_id)
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
