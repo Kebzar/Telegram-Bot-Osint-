@@ -198,7 +198,7 @@ translations = {
         'support': '📞 SUPPORT:',
         
         # Menu completo
-        'menu_title': '📝 COMPOSITE SEARCHES SUPPORTED:',
+        'menu_title': '📝 COMPOSITE SEARCHE SUPPORTED:',
         'composite_examples': '📌 Composite search examples:',
         'combine_what': '🔍 YOU CAN COMBINE:',
         'mass_search': '📋 MASS SEARCH:',
@@ -216,14 +216,14 @@ translations = {
     }
 }
 
- # ==================== CLIENT TURSO UFFICIALE (libsql) ====================
-import libsql  # Nuovo import (dal package 'libsql')
+# ==================== CLIENT TURSO UFFICIALE (libsql) ====================
+import libsql  # Import dalla nuova libreria ufficiale
 
 class TursoDatabase:
-    """Cliente ufficiale per Turso remoto (stabile, HTTP/Hrana)"""
+    """Cliente ufficiale Turso remoto puro (no embedded replica)"""
     
     def __init__(self):
-        self.db_url = os.environ.get('TURSO_DB_URL', '')  # Usa libsql://...
+        self.db_url = os.environ.get('TURSO_DB_URL', '')  # libsql://...
         self.auth_token = os.environ.get('TURSO_AUTH_TOKEN', '')
         self.client = None
         logger.info(f"Turso config: URL={self.db_url[:50]}... Token={'Sì' if self.auth_token else 'No'}")
@@ -234,13 +234,12 @@ class TursoDatabase:
                 logger.error("❌ TURSO_DB_URL o TURSO_AUTH_TOKEN non configurati!")
                 raise ValueError("TURSO_DB_URL e TURSO_AUTH_TOKEN obbligatori")
             
-            # Crea il client remoto
-            self.client = libsql.create_client(
-                url=self.db_url,          # libsql://relevant-asgardian-kebzar-kebzar.turso.io
+            self.client = await libsql.create_client(
+                url=self.db_url,  # libsql://relevant-asgardian-kebzar-kebzar.turso.io
                 auth_token=self.auth_token
             )
             
-            logger.info("✅ Connesso a Turso (libsql ufficiale)")
+            logger.info("✅ Connesso a Turso (libsql ufficiale remoto)")
             await self.initialize_tables()
         except Exception as e:
             logger.error(f"❌ Errore connessione Turso: {e}")
@@ -251,7 +250,7 @@ class TursoDatabase:
             if not self.client:
                 await self.connect()
             
-            result = await self.client.execute(sql, params or [])
+            result = await self.client.execute(sql, list(params) if params else [])
             return result
         except Exception as e:
             logger.error(f"❌ Errore esecuzione query: {e}\nSQL: {sql}\nParams: {params}")
@@ -259,15 +258,14 @@ class TursoDatabase:
     
     async def fetch_one(self, sql: str, params: tuple = ()):
         result = await self.execute(sql, params)
-        return result.rows[0] if result.rows else None
+        return dict(result.rows[0]) if result.rows else None  # Restituisce dict per compatibilità
     
     async def fetch_all(self, sql: str, params: tuple = ()):
         result = await self.execute(sql, params)
-        return result.rows
+        return [dict(row) for row in result.rows]  # Lista di dict
     
     async def initialize_tables(self):
         tables_sql = [
-            # Le tue CREATE TABLE identiche
             '''CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
                 username TEXT,
@@ -278,7 +276,61 @@ class TursoDatabase:
                 last_active TEXT DEFAULT CURRENT_TIMESTAMP,
                 language TEXT DEFAULT 'en'
             )''',
-            # ... tutte le altre
+            
+            '''CREATE TABLE IF NOT EXISTS searches (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                query TEXT,
+                type TEXT,
+                results TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )''',
+            
+            '''CREATE TABLE IF NOT EXISTS breach_data (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT,
+                phone TEXT,
+                name TEXT,
+                surname TEXT,
+                username TEXT,
+                password TEXT,
+                hash TEXT,
+                source TEXT,
+                breach_name TEXT,
+                breach_date TEXT,
+                found_date DATETIME DEFAULT CURRENT_TIMESTAMP
+            )''',
+            
+            '''CREATE TABLE IF NOT EXISTS facebook_leaks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                phone TEXT,
+                facebook_id TEXT,
+                name TEXT,
+                surname TEXT,
+                gender TEXT,
+                birth_date TEXT,
+                city TEXT,
+                country TEXT,
+                company TEXT,
+                relationship_status TEXT,
+                leak_date TEXT,
+                found_date DATETIME DEFAULT CURRENT_TIMESTAMP
+            )''',
+            
+            '''CREATE TABLE IF NOT EXISTS addresses_documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                document_number TEXT,
+                document_type TEXT,
+                full_name TEXT,
+                home_address TEXT,
+                work_address TEXT,
+                city TEXT,
+                country TEXT,
+                phone TEXT,
+                email TEXT,
+                source TEXT,
+                found_date DATETIME DEFAULT CURRENT_TIMESTAMP
+            )'''
         ]
         
         for sql in tables_sql:
@@ -292,6 +344,7 @@ class TursoDatabase:
     async def close(self):
         if self.client:
             await self.client.close()
+            logger.info("✅ Disconnesso da Turso")
         
 # Istanza globale del database
 db = TursoDatabase()
