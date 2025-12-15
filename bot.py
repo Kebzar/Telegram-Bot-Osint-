@@ -36,7 +36,7 @@ from telegram.ext import (
 
 # Aggiungi import per Turso
 import libsql_client
-from libsql_client import Client
+from libsql_client import create_client
 
 # Configurazione logging
 logging.basicConfig(
@@ -230,8 +230,6 @@ translations = {
 # ==================== CLASSE TURSO DATABASE ====================
 
 class TursoDatabase:
-    """Manager per database Turso"""
-    
     def __init__(self):
         self.url = TURSO_DB_URL
         self.auth_token = TURSO_DB_AUTH_TOKEN
@@ -240,7 +238,8 @@ class TursoDatabase:
     async def connect(self):
         """Connette al database Turso"""
         try:
-            self.client = Client(
+            # MODIFICA: Usa create_client invece di Client
+            self.client = libsql_client.create_client(
                 url=self.url,
                 auth_token=self.auth_token
             )
@@ -252,7 +251,7 @@ class TursoDatabase:
         except Exception as e:
             logger.error(f"❌ Errore connessione Turso: {e}")
             raise
-    
+            
     async def close(self):
         """Chiude la connessione"""
         if self.client:
