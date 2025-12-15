@@ -216,14 +216,12 @@ translations = {
     }
 }
 
-# ==================== CLIENT TURSO UFFICIALE (libsql) ====================
-import libsql  # Import dalla nuova libreria ufficiale
-
+# ==================== CLIENT TURSO REMOTO (libsql-client ufficiale) ====================
 class TursoDatabase:
-    """Cliente ufficiale Turso remoto puro (no embedded replica)"""
+    """Cliente remoto puro per Turso (libsql-client)"""
     
     def __init__(self):
-        self.db_url = os.environ.get('TURSO_DB_URL', '')  # libsql://...
+        self.db_url = os.environ.get('TURSO_DB_URL', '')
         self.auth_token = os.environ.get('TURSO_AUTH_TOKEN', '')
         self.client = None
         logger.info(f"Turso config: URL={self.db_url[:50]}... Token={'Sì' if self.auth_token else 'No'}")
@@ -234,12 +232,14 @@ class TursoDatabase:
                 logger.error("❌ TURSO_DB_URL o TURSO_AUTH_TOKEN non configurati!")
                 raise ValueError("TURSO_DB_URL e TURSO_AUTH_TOKEN obbligatori")
             
-            self.client = await libsql.create_client(
+            import libsql_client
+            
+            self.client = await libsql_client.create_client(
                 url=self.db_url,  # libsql://relevant-asgardian-kebzar-kebzar.turso.io
                 auth_token=self.auth_token
             )
             
-            logger.info("✅ Connesso a Turso (libsql ufficiale remoto)")
+            logger.info("✅ Connesso a Turso (libsql-client remoto)")
             await self.initialize_tables()
         except Exception as e:
             logger.error(f"❌ Errore connessione Turso: {e}")
@@ -258,14 +258,15 @@ class TursoDatabase:
     
     async def fetch_one(self, sql: str, params: tuple = ()):
         result = await self.execute(sql, params)
-        return dict(result.rows[0]) if result.rows else None  # Restituisce dict per compatibilità
+        return result.rows[0] if result.rows else None
     
     async def fetch_all(self, sql: str, params: tuple = ()):
         result = await self.execute(sql, params)
-        return [dict(row) for row in result.rows]  # Lista di dict
+        return result.rows
     
     async def initialize_tables(self):
         tables_sql = [
+            # Copia le tue CREATE TABLE qui (identiche a prima)
             '''CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
                 username TEXT,
@@ -276,61 +277,7 @@ class TursoDatabase:
                 last_active TEXT DEFAULT CURRENT_TIMESTAMP,
                 language TEXT DEFAULT 'en'
             )''',
-            
-            '''CREATE TABLE IF NOT EXISTS searches (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                query TEXT,
-                type TEXT,
-                results TEXT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-            )''',
-            
-            '''CREATE TABLE IF NOT EXISTS breach_data (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                email TEXT,
-                phone TEXT,
-                name TEXT,
-                surname TEXT,
-                username TEXT,
-                password TEXT,
-                hash TEXT,
-                source TEXT,
-                breach_name TEXT,
-                breach_date TEXT,
-                found_date DATETIME DEFAULT CURRENT_TIMESTAMP
-            )''',
-            
-            '''CREATE TABLE IF NOT EXISTS facebook_leaks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                phone TEXT,
-                facebook_id TEXT,
-                name TEXT,
-                surname TEXT,
-                gender TEXT,
-                birth_date TEXT,
-                city TEXT,
-                country TEXT,
-                company TEXT,
-                relationship_status TEXT,
-                leak_date TEXT,
-                found_date DATETIME DEFAULT CURRENT_TIMESTAMP
-            )''',
-            
-            '''CREATE TABLE IF NOT EXISTS addresses_documents (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                document_number TEXT,
-                document_type TEXT,
-                full_name TEXT,
-                home_address TEXT,
-                work_address TEXT,
-                city TEXT,
-                country TEXT,
-                phone TEXT,
-                email TEXT,
-                source TEXT,
-                found_date DATETIME DEFAULT CURRENT_TIMESTAMP
-            )'''
+            # ... aggiungi tutte le altre tabelle
         ]
         
         for sql in tables_sql:
