@@ -225,7 +225,7 @@ translations = {
 # ==================== TURSO DATABASE MANAGER ====================
 
 class TursoDatabase:
-    """Gestione del database Turso (libSQL) tramite HTTP"""
+    """Gestione del database Turso (libSQL) tramite HTTP con timeout corretti"""
     
     def __init__(self, db_url: str, auth_token: str):
         self.db_url = db_url.rstrip('/')
@@ -234,12 +234,19 @@ class TursoDatabase:
             'Authorization': f'Bearer {auth_token}',
             'Content-Type': 'application/json'
         }
-        self.session = aiohttp.ClientSession(headers=self.headers)
-        
+        # NON creare la sessione qui, la creeremo quando serve
+        self.timeout = aiohttp.ClientTimeout(total=30)
+    
+    async def _get_session(self) -> aiohttp.ClientSession:
+        """Crea una nuova sessione per ogni richiesta"""
+        return aiohttp.ClientSession(headers=self.headers, timeout=self.timeout)
+    
     async def execute(self, query: str, params: Optional[list] = None) -> List[dict]:
         """Esegue una query sul database Turso"""
+        session = None
         try:
-            async with self.session.post(
+            session = await self._get_session()
+            async with session.post(
                 f'{self.db_url}/query',
                 json={'statements': [{'q': query, 'params': params or []}]}
             ) as response:
@@ -248,9 +255,15 @@ class TursoDatabase:
                     if data.get('results'):
                         return data['results'][0].get('rows', [])
                 return []
+        except asyncio.TimeoutError:
+            logger.error("Turso query timeout after 30 seconds")
+            return []
         except Exception as e:
             logger.error(f"Turso query error: {e}")
             return []
+        finally:
+            if session:
+                await session.close()
     
     async def fetchone(self, query: str, params: Optional[list] = None) -> Optional[tuple]:
         """Esegue una query e restituisce un solo risultato"""
@@ -264,9 +277,11 @@ class TursoDatabase:
     
     async def execute_many(self, queries: List[str]) -> bool:
         """Esegue multiple query"""
+        session = None
         try:
+            session = await self._get_session()
             statements = [{'q': query, 'params': []} for query in queries]
-            async with self.session.post(
+            async with session.post(
                 f'{self.db_url}/query',
                 json={'statements': statements}
             ) as response:
@@ -274,17 +289,34 @@ class TursoDatabase:
         except Exception as e:
             logger.error(f"Turso execute_many error: {e}")
             return False
+        finally:
+            if session:
+                await session.close()
     
     async def close(self):
-        """Chiude la sessione"""
-        await self.session.close()
+        """Metodo mantenuto per compatibilità"""
+        pass
 
 # Inizializzazione del database Turso
 if TURSO_DB_URL and TURSO_AUTH_TOKEN:
     turso_db = TursoDatabase(TURSO_DB_URL, TURSO_AUTH_TOKEN)
 else:
     logger.error("❌ TURSO_DB_URL e TURSO_AUTH_TOKEN non configurati!")
-    sys.exit(1)
+    # Crea un database fittizio per il testing invece di uscire
+    logger.warning("⚠️ Usando database mock per testing")
+    class MockTursoDatabase:
+        async def execute(self, query: str, params=None):
+            return []
+        async def fetchone(self, query: str, params=None):
+            return None
+        async def fetchall(self, query: str, params=None):
+            return []
+        async def execute_many(self, queries):
+            return True
+        async def close(self):
+            pass
+
+    turso_db = MockTursoDatabase()
 
 # ==================== FUNZIONI DATABASE COMPATIBILITÀ ====================
 
@@ -384,10 +416,16 @@ class LeakSearchAPI:
     """API per ricerche nei data breach reali"""
     
     def __init__(self):
-        self.session = requests.Session()
-        self.session.headers.update({
+        # Rimuovi la sessione persistente
+        pass
+    
+    def _get_session(self) -> requests.Session:
+        """Crea una nuova sessione requests"""
+        session = requests.Session()
+        session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         })
+        return session
     
     def is_email(self, text: str) -> bool:
         """Verifica se il testo è un'email"""
@@ -448,10 +486,11 @@ class LeakSearchAPI:
         doc_clean = document_number.upper().strip()
         
         if DEHASHED_API_KEY:
+            session = self._get_session()
             try:
                 auth = base64.b64encode(f"{DEHASHED_EMAIL}:{DEHASHED_API_KEY}".encode()).decode()
                 headers = {'Authorization': f'Basic {auth}'}
-                response = self.session.get(
+                response = session.get(
                     f'https://api.dehashed.com/search?query={quote_plus(doc_clean)}',
                     headers=headers, timeout=15
                 )
@@ -471,6 +510,8 @@ class LeakSearchAPI:
                             })
             except Exception as e:
                 logger.error(f"Dehashed document error: {e}")
+            finally:
+                session.close()
         
         # Ricerca nel database Turso
         db_results = await db_fetchall(
@@ -493,10 +534,11 @@ class LeakSearchAPI:
             })
         
         if SNUSBASE_API_KEY:
+            session = self._get_session()
             try:
                 headers = {'Auth': SNUSBASE_API_KEY}
                 data = {'terms': [doc_clean], 'types': ['id']}
-                response = self.session.post(
+                response = session.post(
                     'https://api.snusbase.com/v3/search',
                     headers=headers, json=data, timeout=20
                 )
@@ -514,6 +556,8 @@ class LeakSearchAPI:
                             })
             except Exception as e:
                 logger.error(f"Snusbase document error: {e}")
+            finally:
+                session.close()
         
         return {'found': len(results) > 0, 'results': results, 'count': len(results)}
     
@@ -523,10 +567,11 @@ class LeakSearchAPI:
         address_clean = address.strip()
         
         if DEHASHED_API_KEY:
+            session = self._get_session()
             try:
                 auth = base64.b64encode(f"{DEHASHED_EMAIL}:{DEHASHED_API_KEY}".encode()).decode()
                 headers = {'Authorization': f'Basic {auth}'}
-                response = self.session.get(
+                response = session.get(
                     f'https://api.dehashed.com/search?query={quote_plus(address_clean)}+home',
                     headers=headers, timeout=15
                 )
@@ -547,6 +592,8 @@ class LeakSearchAPI:
                                 })
             except Exception as e:
                 logger.error(f"Dehashed home address error: {e}")
+            finally:
+                session.close()
         
         # Ricerca nel database Turso
         db_results = await db_fetchall(
@@ -594,10 +641,11 @@ class LeakSearchAPI:
         address_clean = address.strip()
         
         if DEHASHED_API_KEY:
+            session = self._get_session()
             try:
                 auth = base64.b64encode(f"{DEHASHED_EMAIL}:{DEHASHED_API_KEY}".encode()).decode()
                 headers = {'Authorization': f'Basic {auth}'}
-                response = self.session.get(
+                response = session.get(
                     f'https://api.dehashed.com/search?query={quote_plus(address_clean)}+work+company',
                     headers=headers, timeout=15
                 )
@@ -619,6 +667,8 @@ class LeakSearchAPI:
                                 })
             except Exception as e:
                 logger.error(f"Dehashed work address error: {e}")
+            finally:
+                session.close()
         
         # Ricerca nel database Turso
         db_results = await db_fetchall(
@@ -661,8 +711,9 @@ class LeakSearchAPI:
                 })
         
         if HUNTER_API_KEY:
+            session = self._get_session()
             try:
-                response = self.session.get(
+                response = session.get(
                     f'https://api.hunter.io/v2/domain-search?company={quote_plus(address_clean)}&api_key={HUNTER_API_KEY}',
                     timeout=10
                 )
@@ -680,6 +731,8 @@ class LeakSearchAPI:
                             })
             except Exception as e:
                 logger.error(f"Hunter work address error: {e}")
+            finally:
+                session.close()
         
         return {'found': len(results) > 0, 'results': results, 'count': len(results)}
     
@@ -688,9 +741,10 @@ class LeakSearchAPI:
         results = []
         
         if HIBP_API_KEY:
+            session = self._get_session()
             try:
                 headers = {'hibp-api-key': HIBP_API_KEY}
-                response = self.session.get(
+                response = session.get(
                     f'https://haveibeenpwned.com/api/v3/breachedaccount/{email}',
                     headers=headers, timeout=10
                 )
@@ -706,12 +760,15 @@ class LeakSearchAPI:
                         })
             except Exception as e:
                 logger.error(f"HIBP error: {e}")
+            finally:
+                session.close()
         
         if DEHASHED_API_KEY:
+            session = self._get_session()
             try:
                 auth = base64.b64encode(f"{DEHASHED_EMAIL}:{DEHASHED_API_KEY}".encode()).decode()
                 headers = {'Authorization': f'Basic {auth}'}
-                response = self.session.get(
+                response = session.get(
                     f'https://api.dehashed.com/search?query={quote_plus(email)}',
                     headers=headers, timeout=15
                 )
@@ -729,12 +786,15 @@ class LeakSearchAPI:
                             })
             except Exception as e:
                 logger.error(f"Dehashed error: {e}")
+            finally:
+                session.close()
         
         if SNUSBASE_API_KEY:
+            session = self._get_session()
             try:
                 headers = {'Auth': SNUSBASE_API_KEY}
                 data = {'terms': [email], 'types': ['email']}
-                response = self.session.post(
+                response = session.post(
                     'https://api.snusbase.com/v3/search',
                     headers=headers, json=data, timeout=20
                 )
@@ -751,6 +811,8 @@ class LeakSearchAPI:
                             })
             except Exception as e:
                 logger.error(f"Snusbase error: {e}")
+            finally:
+                session.close()
         
         return {'found': len(results) > 0, 'results': results, 'count': len(results)}
     
@@ -760,10 +822,11 @@ class LeakSearchAPI:
         phone_clean = re.sub(r'[^\d+]', '', phone)
         
         if DEHASHED_API_KEY:
+            session = self._get_session()
             try:
                 auth = base64.b64encode(f"{DEHASHED_EMAIL}:{DEHASHED_API_KEY}".encode()).decode()
                 headers = {'Authorization': f'Basic {auth}'}
-                response = self.session.get(
+                response = session.get(
                     f'https://api.dehashed.com/search?query={quote_plus(phone_clean)}',
                     headers=headers, timeout=15
                 )
@@ -782,6 +845,8 @@ class LeakSearchAPI:
                             })
             except Exception as e:
                 logger.error(f"Dehashed phone error: {e}")
+            finally:
+                session.close()
         
         # Ricerca nel database Turso
         db_results = await db_fetchall(
@@ -803,9 +868,10 @@ class LeakSearchAPI:
             })
         
         if LEAKCHECK_API_KEY:
+            session = self._get_session()
             try:
                 params = {'key': LEAKCHECK_API_KEY, 'type': 'phone', 'query': phone_clean}
-                response = self.session.get(
+                response = session.get(
                     'https://leakcheck.io/api/public',
                     params=params, timeout=15
                 )
@@ -820,6 +886,8 @@ class LeakSearchAPI:
                             })
             except Exception as e:
                 logger.error(f"LeakCheck error: {e}")
+            finally:
+                session.close()
         
         return {'found': len(results) > 0, 'results': results, 'count': len(results)}
     
@@ -829,9 +897,10 @@ class LeakSearchAPI:
         breach_results = []
         
         # ============ API WHATSMYNAME (GRATIS, SENZA KEY) ============
+        session = self._get_session()
         try:
             whatsmyname_url = f"{WHATSMYNAME_API_URL}/identities/{quote_plus(username)}"
-            response = self.session.get(whatsmyname_url, timeout=10)
+            response = session.get(whatsmyname_url, timeout=10)
             if response.status_code == 200:
                 data = response.json()
                 if data.get('sites'):
@@ -846,11 +915,14 @@ class LeakSearchAPI:
                             })
         except Exception as e:
             logger.error(f"Whatsmyname API error: {e}")
+        finally:
+            session.close()
         
         # ============ API INSTANTUSERNAME (GRATIS) ============
+        session = self._get_session()
         try:
             instant_url = f"{INSTANTUSERNAME_API}/check/{quote_plus(username)}"
-            response = self.session.get(instant_url, timeout=5)
+            response = session.get(instant_url, timeout=5)
             if response.status_code == 200:
                 data = response.json()
                 for platform, info in data.get('services', {}).items():
@@ -864,9 +936,12 @@ class LeakSearchAPI:
                         })
         except Exception as e:
             logger.error(f"InstantUsername error: {e}")
+        finally:
+            session.close()
         
         # ============ API NAMEAPI (SE C'È API KEY) ============
         if NAMEAPI_KEY:
+            session = self._get_session()
             try:
                 nameapi_url = f"https://api.nameapi.org/rest/v5.3/username/search"
                 params = {
@@ -874,7 +949,7 @@ class LeakSearchAPI:
                     'username': username,
                     'context': 'social'
                 }
-                response = self.session.get(nameapi_url, params=params, timeout=10)
+                response = session.get(nameapi_url, params=params, timeout=10)
                 if response.status_code == 200:
                     data = response.json()
                     if data.get('matches'):
@@ -889,9 +964,12 @@ class LeakSearchAPI:
                                 })
             except Exception as e:
                 logger.error(f"NameAPI error: {e}")
+            finally:
+                session.close()
         
         # ============ API SOCIAL-SEARCHER (SE C'È API KEY) ============
         if SOCIAL_SEARCHER_KEY:
+            session = self._get_session()
             try:
                 social_url = "https://api.social-searcher.com/v2/search"
                 params = {
@@ -901,7 +979,7 @@ class LeakSearchAPI:
                     'key': SOCIAL_SEARCHER_KEY,
                     'limit': 15
                 }
-                response = self.session.get(social_url, params=params, timeout=10)
+                response = session.get(social_url, params=params, timeout=10)
                 if response.status_code == 200:
                     data = response.json()
                     if data.get('posts'):
@@ -920,6 +998,8 @@ class LeakSearchAPI:
                                     })
             except Exception as e:
                 logger.error(f"Social-Searcher error: {e}")
+            finally:
+                session.close()
         
         # ============ CONTROLLI MANUALI (BACKUP) ============
         social_platforms = [
@@ -942,7 +1022,8 @@ class LeakSearchAPI:
                 continue
                 
             try:
-                response = self.session.get(url, timeout=3, allow_redirects=False)
+                session = self._get_session()
+                response = session.get(url, timeout=3, allow_redirects=False)
                 if response.status_code in [200, 301, 302]:
                     social_results.append({
                         'platform': platform,
@@ -951,14 +1032,17 @@ class LeakSearchAPI:
                         'source': 'Direct check'
                     })
             except:
-                continue
+                pass
+            finally:
+                session.close()
         
         # ============ DATA BREACH CHECK (ESISTENTE) ============
         if DEHASHED_API_KEY:
+            session = self._get_session()
             try:
                 auth = base64.b64encode(f"{DEHASHED_EMAIL}:{DEHASHED_API_KEY}".encode()).decode()
                 headers = {'Authorization': f'Basic {auth}'}
-                response = self.session.get(
+                response = session.get(
                     f'https://api.dehashed.com/search?query={quote_plus(username)}',
                     headers=headers, timeout=15
                 )
@@ -975,6 +1059,8 @@ class LeakSearchAPI:
                             })
             except Exception as e:
                 logger.error(f"Dehashed username error: {e}")
+            finally:
+                session.close()
         
         # Rimuovi duplicati basati su URL
         unique_results = []
@@ -1003,8 +1089,9 @@ class LeakSearchAPI:
         }
         
         # 1. Whatsmyname (completo)
+        session = self._get_session()
         try:
-            response = self.session.get(
+            response = session.get(
                 f"https://api.whatsmyname.app/v0/identities/{quote_plus(username)}",
                 timeout=15
             )
@@ -1013,6 +1100,8 @@ class LeakSearchAPI:
                 all_results['whatsmyname'] = data.get('sites', [])
         except:
             pass
+        finally:
+            session.close()
         
         # 2. Ricerca varianti (username simili)
         username_lower = username.lower()
@@ -1027,7 +1116,8 @@ class LeakSearchAPI:
         for variant in common_variants[:3]:
             try:
                 variant_url = f"https://api.whatsmyname.app/v0/identities/{quote_plus(variant)}"
-                response = self.session.get(variant_url, timeout=5)
+                session = self._get_session()
+                response = session.get(variant_url, timeout=5)
                 if response.status_code == 200:
                     data = response.json()
                     if data.get('sites'):
@@ -1037,6 +1127,8 @@ class LeakSearchAPI:
                         })
             except:
                 continue
+            finally:
+                session.close()
         
         return all_results
     
@@ -1074,8 +1166,9 @@ class LeakSearchAPI:
         info = {}
         
         if IPINFO_API_KEY:
+            session = self._get_session()
             try:
-                response = self.session.get(
+                response = session.get(
                     f'https://ipinfo.io/{ip}/json?token={IPINFO_API_KEY}',
                     timeout=10
                 )
@@ -1083,12 +1176,15 @@ class LeakSearchAPI:
                     info['ipinfo'] = response.json()
             except Exception as e:
                 logger.error(f"IPInfo error: {e}")
+            finally:
+                session.close()
         
         if ABUSEIPDB_KEY:
+            session = self._get_session()
             try:
                 headers = {'Key': ABUSEIPDB_KEY}
                 params = {'ipAddress': ip, 'maxAgeInDays': 90}
-                response = self.session.get(
+                response = session.get(
                     'https://api.abuseipdb.com/api/v2/check',
                     headers=headers, params=params, timeout=10
                 )
@@ -1096,6 +1192,8 @@ class LeakSearchAPI:
                     info['abuseipdb'] = response.json().get('data', {})
             except Exception as e:
                 logger.error(f"AbuseIPDB error: {e}")
+            finally:
+                session.close()
         
         if SHODAN_API_KEY:
             try:
@@ -1117,10 +1215,11 @@ class LeakSearchAPI:
         results = []
         
         if DEHASHED_API_KEY:
+            session = self._get_session()
             try:
                 auth = base64.b64encode(f"{DEHASHED_EMAIL}:{DEHASHED_API_KEY}".encode()).decode()
                 headers = {'Authorization': f'Basic {auth}'}
-                response = self.session.get(
+                response = session.get(
                     f'https://api.dehashed.com/search?query={quote_plus(password)}',
                     headers=headers, timeout=15
                 )
@@ -1138,6 +1237,8 @@ class LeakSearchAPI:
                             })
             except Exception as e:
                 logger.error(f"Dehashed password error: {e}")
+            finally:
+                session.close()
         
         return {'found': len(results) > 0, 'results': results, 'count': len(results)}
     
@@ -1154,10 +1255,11 @@ class LeakSearchAPI:
             hash_type = "SHA256"
         
         if DEHASHED_API_KEY:
+            session = self._get_session()
             try:
                 auth = base64.b64encode(f"{DEHASHED_EMAIL}:{DEHASHED_API_KEY}".encode()).decode()
                 headers = {'Authorization': f'Basic {auth}'}
-                response = self.session.get(
+                response = session.get(
                     f'https://api.dehashed.com/search?query={quote_plus(hash_str)}',
                     headers=headers, timeout=15
                 )
@@ -1175,6 +1277,8 @@ class LeakSearchAPI:
                                 })
             except Exception as e:
                 logger.error(f"Dehashed hash error: {e}")
+            finally:
+                session.close()
         
         return {
             'hash_type': hash_type,
@@ -1195,9 +1299,10 @@ class LeakSearchAPI:
         
         query = query.strip()
         
+        session = self._get_session()
         try:
             tg_url = f'https://t.me/{query}'
-            response = self.session.get(tg_url, timeout=5)
+            response = session.get(tg_url, timeout=5)
             if response.status_code == 200 and 'tgme_page_title' in response.text:
                 results['telegram'].append({
                     'type': 'username',
@@ -1206,10 +1311,13 @@ class LeakSearchAPI:
                 })
         except:
             pass
+        finally:
+            session.close()
         
+        session = self._get_session()
         try:
             fb_url = f'https://www.facebook.com/public/{query.replace(" ", "-")}'
-            response = self.session.get(fb_url, timeout=5)
+            response = session.get(fb_url, timeout=5)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
                 profiles = soup.find_all('div', {'class': '_2ph_'})
@@ -1222,10 +1330,13 @@ class LeakSearchAPI:
                     })
         except:
             pass
+        finally:
+            session.close()
         
+        session = self._get_session()
         try:
             vk_url = f'https://vk.com/people/{query.replace(" ", "%20")}'
-            response = self.session.get(vk_url, timeout=5)
+            response = session.get(vk_url, timeout=5)
             if response.status_code == 200:
                 results['vk'].append({
                     'type': 'name',
@@ -1234,10 +1345,13 @@ class LeakSearchAPI:
                 })
         except:
             pass
+        finally:
+            session.close()
         
+        session = self._get_session()
         try:
             ig_url = f'https://www.instagram.com/{query.replace(" ", "")}/'
-            response = self.session.get(ig_url, timeout=5, allow_redirects=False)
+            response = session.get(ig_url, timeout=5, allow_redirects=False)
             if response.status_code in [200, 301, 302]:
                 results['instagram'].append({
                     'type': 'username',
@@ -1246,6 +1360,8 @@ class LeakSearchAPI:
                 })
         except:
             pass
+        finally:
+            session.close()
         
         return results
     
@@ -1257,9 +1373,10 @@ class LeakSearchAPI:
             'by_id': []
         }
         
+        session = self._get_session()
         try:
             tg_url = f'https://t.me/{query}'
-            response = self.session.get(tg_url, timeout=5)
+            response = session.get(tg_url, timeout=5)
             if response.status_code == 200 and 'tgme_page_title' in response.text:
                 results['by_username'].append({
                     'url': tg_url,
@@ -1268,6 +1385,8 @@ class LeakSearchAPI:
                 })
         except:
             pass
+        finally:
+            session.close()
         
         if query.isdigit():
             results['by_id'].append({
@@ -1290,9 +1409,10 @@ class LeakSearchAPI:
             'by_name': []
         }
         
+        session = self._get_session()
         try:
             ig_url = f'https://www.instagram.com/{query.replace(" ", "")}/'
-            response = self.session.get(ig_url, timeout=5, allow_redirects=False)
+            response = session.get(ig_url, timeout=5, allow_redirects=False)
             if response.status_code in [200, 301, 302]:
                 results['by_username'].append({
                     'url': ig_url,
@@ -1301,6 +1421,8 @@ class LeakSearchAPI:
                 })
         except:
             pass
+        finally:
+            session.close()
         
         if ' ' in query:
             results['by_name'].append({
@@ -1318,9 +1440,10 @@ class LeakSearchAPI:
             'by_id': []
         }
         
+        session = self._get_session()
         try:
             fb_url = f'https://www.facebook.com/public/{query.replace(" ", "-")}'
-            response = self.session.get(fb_url, timeout=5)
+            response = session.get(fb_url, timeout=5)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
                 profiles = soup.find_all('div', {'class': '_2ph_'})
@@ -1333,11 +1456,14 @@ class LeakSearchAPI:
                     })
         except:
             pass
+        finally:
+            session.close()
         
         if query.isdigit():
+            session = self._get_session()
             try:
                 fb_url = f'https://www.facebook.com/profile.php?id={query}'
-                response = self.session.get(fb_url, timeout=5, allow_redirects=False)
+                response = session.get(fb_url, timeout=5, allow_redirects=False)
                 if response.status_code == 200:
                     results['by_id'].append({
                         'url': fb_url,
@@ -1347,6 +1473,8 @@ class LeakSearchAPI:
                     })
             except:
                 pass
+            finally:
+                session.close()
         
         return results
     
@@ -1357,9 +1485,10 @@ class LeakSearchAPI:
             'by_id': []
         }
         
+        session = self._get_session()
         try:
             vk_url = f'https://vk.com/people/{query.replace(" ", "%20")}'
-            response = self.session.get(vk_url, timeout=5)
+            response = session.get(vk_url, timeout=5)
             if response.status_code == 200:
                 results['by_name'].append({
                     'url': vk_url,
@@ -1368,11 +1497,14 @@ class LeakSearchAPI:
                 })
         except:
             pass
+        finally:
+            session.close()
         
         if query.isdigit():
+            session = self._get_session()
             try:
                 vk_url = f'https://vk.com/id{query}'
-                response = self.session.get(vk_url, timeout=5, allow_redirects=False)
+                response = session.get(vk_url, timeout=5, allow_redirects=False)
                 if response.status_code == 200:
                     results['by_id'].append({
                         'url': vk_url,
@@ -1382,6 +1514,8 @@ class LeakSearchAPI:
                     })
             except:
                 pass
+            finally:
+                session.close()
         
         return results
     
@@ -1416,6 +1550,7 @@ class LeakSearchAPI:
             })
         
         if FACEBOOK_GRAPH_API_KEY and ' ' in query:
+            session = self._get_session()
             try:
                 parts = query.split()
                 if len(parts) >= 2:
@@ -1430,7 +1565,7 @@ class LeakSearchAPI:
                         'limit': 5
                     }
                     
-                    response = self.session.get(search_url, params=params, timeout=10)
+                    response = session.get(search_url, params=params, timeout=10)
                     if response.status_code == 200:
                         data = response.json()
                         if data.get('data'):
@@ -1445,13 +1580,16 @@ class LeakSearchAPI:
                                 })
             except Exception as e:
                 logger.error(f"Facebook Graph API error: {e}")
+            finally:
+                session.close()
         
+        session = self._get_session()
         try:
             bing_url = f'https://www.bing.com/search?q=site%3Afacebook.com+{quote_plus(query)}'
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
-            response = self.session.get(bing_url, headers=headers, timeout=10)
+            response = session.get(bing_url, headers=headers, timeout=10)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
                 links = soup.find_all('a', href=True)
@@ -1466,12 +1604,15 @@ class LeakSearchAPI:
                         })
         except Exception as e:
             logger.error(f"Search engine error: {e}")
+        finally:
+            session.close()
         
         if DEHASHED_API_KEY:
+            session = self._get_session()
             try:
                 auth = base64.b64encode(f"{DEHASHED_EMAIL}:{DEHASHED_API_KEY}".encode()).decode()
                 headers = {'Authorization': f'Basic {auth}'}
-                response = self.session.get(
+                response = session.get(
                     f'https://api.dehashed.com/search?query={quote_plus("facebook.com")}+{quote_plus(query)}',
                     headers=headers, timeout=15
                 )
@@ -1491,6 +1632,8 @@ class LeakSearchAPI:
                                 })
             except Exception as e:
                 logger.error(f"Dehashed Facebook error: {e}")
+            finally:
+                session.close()
         
         return results
     
@@ -1520,10 +1663,11 @@ class LeakSearchAPI:
             })
         
         if SNUSBASE_API_KEY:
+            session = self._get_session()
             try:
                 headers = {'Auth': SNUSBASE_API_KEY}
                 data = {'terms': [phone_clean], 'types': ['phone']}
-                response = self.session.post(
+                response = session.post(
                     'https://api.snusbase.com/v3/search',
                     headers=headers, json=data, timeout=20
                 )
@@ -1541,6 +1685,8 @@ class LeakSearchAPI:
                                 })
             except Exception as e:
                 logger.error(f"Snusbase phone error: {e}")
+            finally:
+                session.close()
         
         return {'found': len(results) > 0, 'results': results, 'count': len(results)}
     
@@ -1550,10 +1696,11 @@ class LeakSearchAPI:
         facebook_email = email.lower()
         
         if DEHASHED_API_KEY:
+            session = self._get_session()
             try:
                 auth = base64.b64encode(f"{DEHASHED_EMAIL}:{DEHASHED_API_KEY}".encode()).decode()
                 headers = {'Authorization': f'Basic {auth}'}
-                response = self.session.get(
+                response = session.get(
                     f'https://api.dehashed.com/search?query={quote_plus(facebook_email)}+facebook',
                     headers=headers, timeout=15
                 )
@@ -1572,12 +1719,15 @@ class LeakSearchAPI:
                             })
             except Exception as e:
                 logger.error(f"Dehashed Facebook email error: {e}")
+            finally:
+                session.close()
         
         if SNUSBASE_API_KEY:
+            session = self._get_session()
             try:
                 headers = {'Auth': SNUSBASE_API_KEY}
                 data = {'terms': [email], 'types': ['email']}
-                response = self.session.post(
+                response = session.post(
                     'https://api.snusbase.com/v3/search',
                     headers=headers, json=data, timeout=20
                 )
@@ -1594,6 +1744,8 @@ class LeakSearchAPI:
                                 })
             except Exception as e:
                 logger.error(f"Snusbase Facebook email error: {e}")
+            finally:
+                session.close()
         
         return {'found': len(results) > 0, 'results': results, 'count': len(results)}
     
@@ -1619,9 +1771,10 @@ class LeakSearchAPI:
                     'country': row[8]
                 })
             
+            session = self._get_session()
             try:
                 profile_url = f'https://facebook.com/{fb_id}'
-                response = self.session.get(profile_url, timeout=10, allow_redirects=True)
+                response = session.get(profile_url, timeout=10, allow_redirects=True)
                 
                 if response.status_code == 200:
                     soup = BeautifulSoup(response.text, 'html.parser')
@@ -1637,6 +1790,8 @@ class LeakSearchAPI:
                         })
             except Exception as e:
                 logger.error(f"Facebook ID profile error: {e}")
+            finally:
+                session.close()
         
         return {'found': len(results) > 0, 'results': results, 'count': len(results)}
 
