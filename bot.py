@@ -34,7 +34,8 @@ from telegram.ext import (
 )
 
 # ==================== AGGIUNTA IMPORT LIBSQL ====================
-from libsql_experimental import create_client
+import os
+from libsql_experimental import Connection
 # ===============================================================
 
 # Configurazione logging
@@ -219,21 +220,20 @@ translations = {
 }
 
 # ==================== SOSTITUZIONE COMPLETA DEL DATABASE SETUP ====================
-# ==================== DATABASE SETUP - TURSO REMOTO (Sincrono) ====================
 TURSO_DATABASE_URL = os.environ.get('TURSO_DATABASE_URL')
 TURSO_AUTH_TOKEN = os.environ.get('TURSO_AUTH_TOKEN')
 
 if TURSO_DATABASE_URL and TURSO_AUTH_TOKEN:
-    # Connessione sincrona a Turso remoto (il tuo database relevant-asgardian)
-    conn = create_client(url=TURSO_DATABASE_URL, auth_token=TURSO_AUTH_TOKEN)
-    c = conn.cursor()  # Cursor identico a sqlite3
+    # Connessione sincrona a Turso remoto
+    conn = Connection(url=TURSO_DATABASE_URL, auth_token=TURSO_AUTH_TOKEN)
+    c = conn.cursor()  # Cursor compatibile con sqlite3
     logger.info("✅ Connesso a Turso remoto con successo!")
 else:
-    # Fallback locale solo per test su PC
+    # Fallback locale
     import sqlite3
     conn = sqlite3.connect('leakosint_bot.db', check_same_thread=False)
     c = conn.cursor()
-    logger.warning("⚠️ Usando SQLite locale (fallback per sviluppo)")
+    logger.warning("⚠️ Usando SQLite locale (fallback)")
 # ================================================================================
 
 # Tabelle database
