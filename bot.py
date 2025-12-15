@@ -254,6 +254,7 @@ class TursoDatabase:
                     data = await response.json()
                     if data.get('results'):
                         return data['results'][0].get('rows', [])
+                logger.error(f"Turso query error: HTTP {response.status}")
                 return []
         except asyncio.TimeoutError:
             logger.error("Turso query timeout after 30 seconds")
@@ -407,6 +408,7 @@ async def init_database():
     for query in create_tables_queries:
         try:
             await db_execute(query)
+            logger.info(f"Table created/verified: {query[:50]}...")
         except Exception as e:
             logger.error(f"Error creating table: {e}")
 
@@ -514,24 +516,27 @@ class LeakSearchAPI:
                 session.close()
         
         # Ricerca nel database Turso
-        db_results = await db_fetchall(
-            '''SELECT * FROM addresses_documents WHERE 
-            document_number LIKE ? OR document_number = ? LIMIT 10''',
-            [f'%{doc_clean}%', doc_clean]
-        )
-        
-        for row in db_results:
-            results.append({
-                'source': 'Turso Database',
-                'document_type': row[2],
-                'document_number': row[1],
-                'full_name': row[3],
-                'home_address': row[4],
-                'work_address': row[5],
-                'city': row[6],
-                'phone': row[8],
-                'email': row[9]
-            })
+        try:
+            db_results = await db_fetchall(
+                '''SELECT * FROM addresses_documents WHERE 
+                document_number LIKE ? OR document_number = ? LIMIT 10''',
+                [f'%{doc_clean}%', doc_clean]
+            )
+            
+            for row in db_results:
+                results.append({
+                    'source': 'Turso Database',
+                    'document_type': row[2] if len(row) > 2 else 'Unknown',
+                    'document_number': row[1] if len(row) > 1 else doc_clean,
+                    'full_name': row[3] if len(row) > 3 else 'Unknown',
+                    'home_address': row[4] if len(row) > 4 else None,
+                    'work_address': row[5] if len(row) > 5 else None,
+                    'city': row[6] if len(row) > 6 else None,
+                    'phone': row[8] if len(row) > 8 else None,
+                    'email': row[9] if len(row) > 9 else None
+                })
+        except Exception as e:
+            logger.error(f"Turso document search error: {e}")
         
         if SNUSBASE_API_KEY:
             session = self._get_session()
@@ -596,42 +601,48 @@ class LeakSearchAPI:
                 session.close()
         
         # Ricerca nel database Turso
-        db_results = await db_fetchall(
-            '''SELECT * FROM addresses_documents WHERE 
-            home_address LIKE ? OR address LIKE ? LIMIT 10''',
-            [f'%{address_clean}%', f'%{address_clean}%']
-        )
+        try:
+            db_results = await db_fetchall(
+                '''SELECT * FROM addresses_documents WHERE 
+                home_address LIKE ? OR document_number LIKE ? LIMIT 10''',
+                [f'%{address_clean}%', f'%{address_clean}%']
+            )
+            
+            for row in db_results:
+                if row[4] and len(row) > 4:
+                    results.append({
+                        'source': 'Turso Database',
+                        'address_type': 'home',
+                        'address': row[4],
+                        'full_name': row[3] if len(row) > 3 else 'Unknown',
+                        'document_number': row[1] if len(row) > 1 else None,
+                        'city': row[6] if len(row) > 6 else None,
+                        'phone': row[8] if len(row) > 8 else None,
+                        'email': row[9] if len(row) > 9 else None
+                    })
+        except Exception as e:
+            logger.error(f"Turso home address search error: {e}")
         
-        for row in db_results:
-            if row[4]:
+        try:
+            fb_results = await db_fetchall(
+                '''SELECT * FROM facebook_leaks WHERE 
+                city LIKE ? OR country LIKE ? LIMIT 10''',
+                [f'%{address_clean}%', f'%{address_clean}%']
+            )
+            
+            for row in fb_results:
                 results.append({
-                    'source': 'Turso Database',
-                    'address_type': 'home',
-                    'address': row[4],
-                    'full_name': row[3],
-                    'document_number': row[1],
-                    'city': row[6],
-                    'phone': row[8],
-                    'email': row[9]
+                    'source': 'Facebook Leak 2021',
+                    'address_type': 'city/country',
+                    'city': row[7] if len(row) > 7 else None,
+                    'country': row[8] if len(row) > 8 else None,
+                    'full_name': f"{row[3] if len(row) > 3 else ''} {row[4] if len(row) > 4 else ''}",
+                    'phone': row[1] if len(row) > 1 else None,
+                    'facebook_id': row[2] if len(row) > 2 else None,
+                    'company': row[9] if len(row) > 9 else None
                 })
-        
-        fb_results = await db_fetchall(
-            '''SELECT * FROM facebook_leaks WHERE 
-            city LIKE ? OR country LIKE ? LIMIT 10''',
-            [f'%{address_clean}%', f'%{address_clean}%']
-        )
-        
-        for row in fb_results:
-            results.append({
-                'source': 'Facebook Leak 2021',
-                'address_type': 'city/country',
-                'city': row[7],
-                'country': row[8],
-                'full_name': f"{row[3]} {row[4]}",
-                'phone': row[1],
-                'facebook_id': row[2],
-                'company': row[9]
-            })
+        except Exception as e:
+            logger.error(f"Turso facebook address search error: {e}")
         
         return {'found': len(results) > 0, 'results': results, 'count': len(results)}
     
@@ -671,44 +682,50 @@ class LeakSearchAPI:
                 session.close()
         
         # Ricerca nel database Turso
-        db_results = await db_fetchall(
-            '''SELECT * FROM addresses_documents WHERE 
-            work_address LIKE ? OR company LIKE ? LIMIT 10''',
-            [f'%{address_clean}%', f'%{address_clean}%']
-        )
+        try:
+            db_results = await db_fetchall(
+                '''SELECT * FROM addresses_documents WHERE 
+                work_address LIKE ? OR home_address LIKE ? LIMIT 10''',
+                [f'%{address_clean}%', f'%{address_clean}%']
+            )
+            
+            for row in db_results:
+                if len(row) > 5 and row[5]:
+                    results.append({
+                        'source': 'Turso Database',
+                        'address_type': 'work',
+                        'company': row[10] if len(row) > 10 else None,
+                        'address': row[5],
+                        'full_name': row[3] if len(row) > 3 else 'Unknown',
+                        'document_number': row[1] if len(row) > 1 else None,
+                        'city': row[6] if len(row) > 6 else None,
+                        'phone': row[8] if len(row) > 8 else None,
+                        'email': row[9] if len(row) > 9 else None
+                    })
+        except Exception as e:
+            logger.error(f"Turso work address search error: {e}")
         
-        for row in db_results:
-            if row[5]:
-                results.append({
-                    'source': 'Turso Database',
-                    'address_type': 'work',
-                    'company': row[10] if len(row) > 10 else None,
-                    'address': row[5],
-                    'full_name': row[3],
-                    'document_number': row[1],
-                    'city': row[6],
-                    'phone': row[8],
-                    'email': row[9]
-                })
-        
-        fb_results = await db_fetchall(
-            '''SELECT * FROM facebook_leaks WHERE 
-            company LIKE ? LIMIT 10''',
-            [f'%{address_clean}%']
-        )
-        
-        for row in fb_results:
-            if row[9]:
-                results.append({
-                    'source': 'Facebook Leak 2021',
-                    'address_type': 'company',
-                    'company': row[9],
-                    'full_name': f"{row[3]} {row[4]}",
-                    'phone': row[1],
-                    'facebook_id': row[2],
-                    'city': row[7],
-                    'country': row[8]
-                })
+        try:
+            fb_results = await db_fetchall(
+                '''SELECT * FROM facebook_leaks WHERE 
+                company LIKE ? LIMIT 10''',
+                [f'%{address_clean}%']
+            )
+            
+            for row in fb_results:
+                if len(row) > 9 and row[9]:
+                    results.append({
+                        'source': 'Facebook Leak 2021',
+                        'address_type': 'company',
+                        'company': row[9],
+                        'full_name': f"{row[3] if len(row) > 3 else ''} {row[4] if len(row) > 4 else ''}",
+                        'phone': row[1] if len(row) > 1 else None,
+                        'facebook_id': row[2] if len(row) > 2 else None,
+                        'city': row[7] if len(row) > 7 else None,
+                        'country': row[8] if len(row) > 8 else None
+                    })
+        except Exception as e:
+            logger.error(f"Turso facebook company search error: {e}")
         
         if HUNTER_API_KEY:
             session = self._get_session()
@@ -725,7 +742,7 @@ class LeakSearchAPI:
                                 'source': 'Hunter.io',
                                 'company': address_clean,
                                 'email': email.get('value'),
-                                'name': email.get('first_name', '') + ' ' + email.get('last_name', ''),
+                                'name': f"{email.get('first_name', '')} {email.get('last_name', '')}".strip(),
                                 'position': email.get('position'),
                                 'type': 'work_email'
                             })
@@ -849,23 +866,26 @@ class LeakSearchAPI:
                 session.close()
         
         # Ricerca nel database Turso
-        db_results = await db_fetchall(
-            '''SELECT * FROM facebook_leaks WHERE phone LIKE ? LIMIT 10''',
-            [f'%{phone_clean[-10:]}%']
-        )
-        
-        for row in db_results:
-            results.append({
-                'source': 'Facebook Leak 2021',
-                'phone': row[1],
-                'facebook_id': row[2],
-                'name': f"{row[3]} {row[4]}",
-                'gender': row[5],
-                'birth_date': row[6],
-                'city': row[7],
-                'country': row[8],
-                'company': row[9]
-            })
+        try:
+            db_results = await db_fetchall(
+                '''SELECT * FROM facebook_leaks WHERE phone LIKE ? LIMIT 10''',
+                [f'%{phone_clean[-10:]}%']
+            )
+            
+            for row in db_results:
+                results.append({
+                    'source': 'Facebook Leak 2021',
+                    'phone': row[1] if len(row) > 1 else None,
+                    'facebook_id': row[2] if len(row) > 2 else None,
+                    'name': f"{row[3] if len(row) > 3 else ''} {row[4] if len(row) > 4 else ''}",
+                    'gender': row[5] if len(row) > 5 else None,
+                    'birth_date': row[6] if len(row) > 6 else None,
+                    'city': row[7] if len(row) > 7 else None,
+                    'country': row[8] if len(row) > 8 else None,
+                    'company': row[9] if len(row) > 9 else None
+                })
+        except Exception as e:
+            logger.error(f"Turso phone search error: {e}")
         
         if LEAKCHECK_API_KEY:
             session = self._get_session()
@@ -1140,24 +1160,27 @@ class LeakSearchAPI:
         if len(parts) >= 2:
             first_name, last_name = parts[0], parts[1]
             
-            db_results = await db_fetchall(
-                '''SELECT * FROM facebook_leaks WHERE 
-                (name LIKE ? OR surname LIKE ?) LIMIT 15''',
-                [f'%{first_name}%', f'%{last_name}%']
-            )
-            
-            for row in db_results:
-                results.append({
-                    'source': 'Facebook Leak 2021',
-                    'phone': row[1],
-                    'facebook_id': row[2],
-                    'name': f"{row[3]} {row[4]}",
-                    'gender': row[5],
-                    'birth_date': row[6],
-                    'city': row[7],
-                    'country': row[8],
-                    'company': row[9]
-                })
+            try:
+                db_results = await db_fetchall(
+                    '''SELECT * FROM facebook_leaks WHERE 
+                    (name LIKE ? OR surname LIKE ?) LIMIT 15''',
+                    [f'%{first_name}%', f'%{last_name}%']
+                )
+                
+                for row in db_results:
+                    results.append({
+                        'source': 'Facebook Leak 2021',
+                        'phone': row[1] if len(row) > 1 else None,
+                        'facebook_id': row[2] if len(row) > 2 else None,
+                        'name': f"{row[3] if len(row) > 3 else ''} {row[4] if len(row) > 4 else ''}",
+                        'gender': row[5] if len(row) > 5 else None,
+                        'birth_date': row[6] if len(row) > 6 else None,
+                        'city': row[7] if len(row) > 7 else None,
+                        'country': row[8] if len(row) > 8 else None,
+                        'company': row[9] if len(row) > 9 else None
+                    })
+            except Exception as e:
+                logger.error(f"Turso name search error: {e}")
         
         return {'found': len(results) > 0, 'results': results, 'count': len(results)}
     
@@ -1528,26 +1551,29 @@ class LeakSearchAPI:
             'search_engines': []
         }
         
-        db_results = await db_fetchall(
-            '''SELECT * FROM facebook_leaks WHERE 
-            name LIKE ? OR surname LIKE ? OR phone LIKE ? 
-            ORDER BY found_date DESC LIMIT 10''',
-            [f'%{query}%', f'%{query}%', f'%{query}%']
-        )
-        
-        for row in db_results:
-            results['leak_data'].append({
-                'type': 'facebook_leak_2021',
-                'phone': row[1],
-                'facebook_id': row[2],
-                'full_name': f"{row[3]} {row[4]}",
-                'gender': row[5],
-                'birth_date': row[6],
-                'city': row[7],
-                'country': row[8],
-                'company': row[9],
-                'leak_date': row[11]
-            })
+        try:
+            db_results = await db_fetchall(
+                '''SELECT * FROM facebook_leaks WHERE 
+                name LIKE ? OR surname LIKE ? OR phone LIKE ? 
+                ORDER BY found_date DESC LIMIT 10''',
+                [f'%{query}%', f'%{query}%', f'%{query}%']
+            )
+            
+            for row in db_results:
+                results['leak_data'].append({
+                    'type': 'facebook_leak_2021',
+                    'phone': row[1] if len(row) > 1 else None,
+                    'facebook_id': row[2] if len(row) > 2 else None,
+                    'full_name': f"{row[3] if len(row) > 3 else ''} {row[4] if len(row) > 4 else ''}",
+                    'gender': row[5] if len(row) > 5 else None,
+                    'birth_date': row[6] if len(row) > 6 else None,
+                    'city': row[7] if len(row) > 7 else None,
+                    'country': row[8] if len(row) > 8 else None,
+                    'company': row[9] if len(row) > 9 else None,
+                    'leak_date': row[11] if len(row) > 11 else None
+                })
+        except Exception as e:
+            logger.error(f"Turso facebook advanced search error: {e}")
         
         if FACEBOOK_GRAPH_API_KEY and ' ' in query:
             session = self._get_session()
@@ -1642,25 +1668,28 @@ class LeakSearchAPI:
         results = []
         phone_clean = re.sub(r'[^\d+]', '', phone)[-10:]
         
-        db_results = await db_fetchall(
-            '''SELECT * FROM facebook_leaks WHERE phone LIKE ? ORDER BY found_date DESC LIMIT 15''',
-            [f'%{phone_clean}%']
-        )
-        
-        for row in db_results:
-            results.append({
-                'source': 'Facebook Leak 2021',
-                'phone': row[1],
-                'facebook_id': row[2],
-                'name': f"{row[3]} {row[4]}",
-                'gender': row[5],
-                'birth_date': row[6],
-                'city': row[7],
-                'country': row[8],
-                'company': row[9],
-                'relationship_status': row[10],
-                'leak_date': row[11]
-            })
+        try:
+            db_results = await db_fetchall(
+                '''SELECT * FROM facebook_leaks WHERE phone LIKE ? ORDER BY found_date DESC LIMIT 15''',
+                [f'%{phone_clean}%']
+            )
+            
+            for row in db_results:
+                results.append({
+                    'source': 'Facebook Leak 2021',
+                    'phone': row[1] if len(row) > 1 else None,
+                    'facebook_id': row[2] if len(row) > 2 else None,
+                    'name': f"{row[3] if len(row) > 3 else ''} {row[4] if len(row) > 4 else ''}",
+                    'gender': row[5] if len(row) > 5 else None,
+                    'birth_date': row[6] if len(row) > 6 else None,
+                    'city': row[7] if len(row) > 7 else None,
+                    'country': row[8] if len(row) > 8 else None,
+                    'company': row[9] if len(row) > 9 else None,
+                    'relationship_status': row[10] if len(row) > 10 else None,
+                    'leak_date': row[11] if len(row) > 11 else None
+                })
+        except Exception as e:
+            logger.error(f"Turso facebook phone search error: {e}")
         
         if SNUSBASE_API_KEY:
             session = self._get_session()
@@ -1754,22 +1783,25 @@ class LeakSearchAPI:
         results = []
         
         if fb_id.isdigit():
-            db_results = await db_fetchall(
-                '''SELECT * FROM facebook_leaks WHERE facebook_id = ?''', 
-                [fb_id]
-            )
-            
-            for row in db_results:
-                results.append({
-                    'source': 'Facebook Leak 2021',
-                    'facebook_id': row[2],
-                    'name': f"{row[3]} {row[4]}",
-                    'phone': row[1],
-                    'gender': row[5],
-                    'birth_date': row[6],
-                    'city': row[7],
-                    'country': row[8]
-                })
+            try:
+                db_results = await db_fetchall(
+                    '''SELECT * FROM facebook_leaks WHERE facebook_id = ?''', 
+                    [fb_id]
+                )
+                
+                for row in db_results:
+                    results.append({
+                        'source': 'Facebook Leak 2021',
+                        'facebook_id': row[2] if len(row) > 2 else None,
+                        'name': f"{row[3] if len(row) > 3 else ''} {row[4] if len(row) > 4 else ''}",
+                        'phone': row[1] if len(row) > 1 else None,
+                        'gender': row[5] if len(row) > 5 else None,
+                        'birth_date': row[6] if len(row) > 6 else None,
+                        'city': row[7] if len(row) > 7 else None,
+                        'country': row[8] if len(row) > 8 else None
+                    })
+            except Exception as e:
+                logger.error(f"Turso facebook id search error: {e}")
             
             session = self._get_session()
             try:
@@ -1850,19 +1882,44 @@ class LeakosintBot:
             await update.message.reply_text(menu_text, reply_markup=reply_markup)
     
     async def register_user(self, user_id: int, username: str):
-        """Registra un nuovo utente"""
+        """Registra un nuovo utente con 4 crediti iniziali"""
         result = await db_fetchone(
             'SELECT * FROM users WHERE user_id = ?', 
             [user_id]
         )
         if not result:
-            await db_execute(
-                '''INSERT INTO users (user_id, username, balance) 
-                VALUES (?, ?, 4)''', 
-                [user_id, username]
-            )
-            return True
-        return False
+            try:
+                await db_execute(
+                    '''INSERT INTO users (user_id, username, balance) 
+                    VALUES (?, ?, 4)''', 
+                    [user_id, username]
+                )
+                logger.info(f"✅ New user registered: {user_id} (@{username}) with 4 credits")
+                return True
+            except Exception as e:
+                logger.error(f"Error registering user: {e}")
+                # Prova alternativa se il primo fallisce
+                try:
+                    await db_execute(
+                        '''INSERT OR IGNORE INTO users (user_id, username, balance) 
+                        VALUES (?, ?, 4)''', 
+                        [user_id, username]
+                    )
+                    return True
+                except Exception as e2:
+                    logger.error(f"Alternative registration also failed: {e2}")
+                    return False
+        else:
+            # Utente già esiste, controlla se ha crediti
+            current_balance = await self.get_user_balance(user_id)
+            if current_balance == 0:
+                # Aggiungi 4 crediti se l'utente ha 0 crediti
+                await db_execute(
+                    '''UPDATE users SET balance = 4 WHERE user_id = ?''',
+                    [user_id]
+                )
+                logger.info(f"✅ User {user_id} had 0 credits, reset to 4")
+            return False
     
     async def get_user_balance(self, user_id: int) -> int:
         result = await db_fetchone(
@@ -1922,25 +1979,53 @@ class LeakosintBot:
         current = await self.get_user_balance(user_id)
         if current >= cost:
             new_balance = current - cost
-            await db_execute(
-                '''UPDATE users SET balance = ?, searches = searches + 1, 
-                last_active = CURRENT_TIMESTAMP WHERE user_id = ?''', 
-                [new_balance, user_id]
-            )
-            return True
+            try:
+                await db_execute(
+                    '''UPDATE users SET balance = ?, searches = searches + 1, 
+                    last_active = CURRENT_TIMESTAMP WHERE user_id = ?''', 
+                    [new_balance, user_id]
+                )
+                return True
+            except Exception as e:
+                logger.error(f"Error updating balance: {e}")
+                return False
         return False
     
     async def add_credits(self, user_id: int, amount: int) -> bool:
         try:
+            # Prima controlla se l'utente esiste
+            user_check = await db_fetchone('SELECT user_id FROM users WHERE user_id = ?', [user_id])
+            if not user_check:
+                # Crea l'utente se non esiste
+                await db_execute(
+                    '''INSERT INTO users (user_id, username, balance) 
+                    VALUES (?, ?, ?)''', 
+                    [user_id, 'admin_added', amount]
+                )
+                logger.info(f"✅ Created user {user_id} with {amount} credits")
+                return True
+            
+            # Altrimenti aggiungi crediti all'utente esistente
             await db_execute(
                 '''UPDATE users SET balance = balance + ?, 
                 last_active = CURRENT_TIMESTAMP WHERE user_id = ?''', 
                 [amount, user_id]
             )
+            logger.info(f"✅ Added {amount} credits to user {user_id}")
             return True
         except Exception as e:
             logger.error(f"Error adding credits: {e}")
-            return False
+            # Prova alternativa
+            try:
+                await db_execute(
+                    '''INSERT OR REPLACE INTO users (user_id, username, balance) 
+                    VALUES (?, ?, COALESCE((SELECT balance FROM users WHERE user_id = ?), 0) + ?)''', 
+                    [user_id, 'admin_added', user_id, amount]
+                )
+                return True
+            except Exception as e2:
+                logger.error(f"Alternative add credits also failed: {e2}")
+                return False
     
     async def log_search(self, user_id: int, query: str, search_type: str, results: str):
         await db_execute(
@@ -2783,7 +2868,7 @@ Errore: {str(e)[:100]}
                 if social_results['social_count'] > 0:
                     result_text += f"\n     ✅ {social_results['social_count']} account social"
             
-            for social in social_results['social']:
+            for social in social_results['social'][:3]:
                 platform = social['platform']
                 url = social['url']
                 result_text += f"\n     - {platform}: {url}"
@@ -2883,41 +2968,49 @@ Errore: {str(e)[:100]}
             if components['emails'] and components['phones']:
                 for email in components['emails'][:1]:
                     for phone in components['phones'][:1]:
-                        # Usa db_fetchone per compatibilità
-                        count_result = await db_fetchone(
-                            '''SELECT COUNT(*) FROM breach_data WHERE 
-                            (email = ? OR phone = ?) AND 
-                            (email = ? OR phone = ?)''',
-                            [email, email, phone, phone]
-                        )
-                        count = count_result[0] if count_result else 0
-                        if count > 0:
-                            correlations.append(f"📧 {email} ↔ 📱 {phone}")
+                        try:
+                            count_result = await db_fetchone(
+                                '''SELECT COUNT(*) FROM breach_data WHERE 
+                                (email = ? OR phone = ?) AND 
+                                (email = ? OR phone = ?)''',
+                                [email, email, phone, phone]
+                            )
+                            count = count_result[0] if count_result else 0
+                            if count > 0:
+                                correlations.append(f"📧 {email} ↔ 📱 {phone}")
+                        except:
+                            pass
             
             if components['names'] and components['phones']:
                 for name in components['names'][:1]:
                     for phone in components['phones'][:1]:
                         phone_clean = re.sub(r'[^\d+]', '', phone)[-10:]
-                        count_result = await db_fetchone(
-                            '''SELECT COUNT(*) FROM facebook_leaks WHERE 
-                            phone LIKE ? AND (name LIKE ? OR surname LIKE ?)''',
-                            [f'%{phone_clean}%', f'%{name[:5]}%', f'%{name[:5]}%']
-                        )
-                        count = count_result[0] if count_result else 0
-                        if count > 0:
-                            correlations.append(f"👤 {name[:15]}... ↔ 📱 {phone}")
+                        try:
+                            count_result = await db_fetchone(
+                                '''SELECT COUNT(*) FROM facebook_leaks WHERE 
+                                phone LIKE ? AND (name LIKE ? OR surname LIKE ?)''',
+                                [f'%{phone_clean}%', f'%{name[:5]}%', f'%{name[:5]}%']
+                            )
+                            count = count_result[0] if count_result else 0
+                            if count > 0:
+                                correlations.append(f"👤 {name[:15]}... ↔ 📱 {phone}")
+                        except:
+                            pass
             
             if components['documents'] and components['names']:
                 for doc in components['documents'][:1]:
                     for name in components['names'][:1]:
-                        count_result = await db_fetchone(
-                            '''SELECT COUNT(*) FROM addresses_documents WHERE 
-                            document_number LIKE ? AND full_name LIKE ?''',
-                            [f'%{doc}%', f'%{name}%']
-                        )
-                        count = count_result[0] if count_result else 0
-                        if count > 0:
-                            correlations.append(f"📄 {doc} ↔ 👤 {name[:15]}...")
+                        try:
+                            count_result = await db_fetchone(
+                                '''SELECT COUNT(*) FROM addresses_documents WHERE 
+                                document_number LIKE ? AND full_name LIKE ?''',
+                                [f'%{doc}%', f'%{name}%']
+                            )
+                            count = count_result[0] if count_result else 0
+                            if count > 0:
+                                correlations.append(f"📄 {doc} ↔ 👤 {name[:15]}...")
+                        except:
+                            pass
             
             if correlations:
                 for corr in correlations[:3]:
@@ -3711,24 +3804,25 @@ Errore: {str(e)[:100]}
             await update.message.reply_text("❌ Accesso negato")
             return
         
-        users_count = await db_fetchone('SELECT COUNT(*) FROM users')
-        total_users = users_count[0] if users_count else 0
-        
-        searches_count = await db_fetchone('SELECT COUNT(*) FROM searches')
-        total_searches = searches_count[0] if searches_count else 0
-        
-        credits_count = await db_fetchone('SELECT SUM(balance) FROM users')
-        total_credits = credits_count[0] or 0 if credits_count else 0
-        
-        now = datetime.now()
-        mesi = {
-            1: 'gennaio', 2: 'febbraio', 3: 'marzo', 4: 'aprile',
-            5: 'maggio', 6: 'giugno', 7: 'luglio', 8: 'agosto',
-            9: 'settembre', 10: 'ottobre', 11: 'novembre', 12: 'dicembre'
-        }
-        data_italiana = f"{now.day} {mesi.get(now.month, 'novembre')}"
-        
-        admin_text = f"""🛡️ PANNELLO AMMINISTRATIVO
+        try:
+            users_count = await db_fetchone('SELECT COUNT(*) FROM users')
+            total_users = users_count[0] if users_count else 0
+            
+            searches_count = await db_fetchone('SELECT COUNT(*) FROM searches')
+            total_searches = searches_count[0] if searches_count else 0
+            
+            credits_count = await db_fetchone('SELECT SUM(balance) FROM users')
+            total_credits = credits_count[0] or 0 if credits_count else 0
+            
+            now = datetime.now()
+            mesi = {
+                1: 'gennaio', 2: 'febbraio', 3: 'marzo', 4: 'aprile',
+                5: 'maggio', 6: 'giugno', 7: 'luglio', 8: 'agosto',
+                9: 'settembre', 10: 'ottobre', 11: 'novembre', 12: 'dicembre'
+            }
+            data_italiana = f"{now.day} {mesi.get(now.month, 'novembre')}"
+            
+            admin_text = f"""🛡️ PANNELLO AMMINISTRATIVO
 
 📊 Statistiche:
 · 👥 Utenti totali: {total_users}
@@ -3736,19 +3830,22 @@ Errore: {str(e)[:100]}
 · 💎 Credit totali: {total_credits}
 
 👥 Ultimi 5 utenti:"""
-        
-        users = await db_fetchall(
-            'SELECT user_id, username, balance, searches FROM users ORDER BY user_id DESC LIMIT 5'
-        )
-        
-        for user in users:
-            admin_text += f"\n\n- 👤 ID: {user[0]} | @{user[1] or 'N/A'}"
-            admin_text += f"\n  💎 Crediti: {user[2]} | 🔍 Ricerche: {user[3]}"
-        
-        admin_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
-        admin_text += f"\n\n{data_italiana}"
-        
-        await update.message.reply_text(admin_text)
+            
+            users = await db_fetchall(
+                'SELECT user_id, username, balance, searches FROM users ORDER BY user_id DESC LIMIT 5'
+            )
+            
+            for user in users:
+                admin_text += f"\n\n- 👤 ID: {user[0]} | @{user[1] or 'N/A'}"
+                admin_text += f"\n  💎 Crediti: {user[2]} | 🔍 Ricerche: {user[3]}"
+            
+            admin_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
+            admin_text += f"\n\n{data_italiana}"
+            
+            await update.message.reply_text(admin_text)
+        except Exception as e:
+            logger.error(f"Admin panel error: {e}")
+            await update.message.reply_text(f"❌ Errore nel pannello admin: {str(e)[:100]}")
     
     async def addcredits_command(self, update: Update, context: CallbackContext):
         """Aggiunge crediti a un utente (solo admin)"""
@@ -3769,15 +3866,37 @@ Errore: {str(e)[:100]}
             target_user_id = int(context.args[0])
             amount = int(context.args[1])
             
-            user = await db_fetchone(
-                'SELECT * FROM users WHERE user_id = ?', 
+            # Prima controlla se l'utente esiste
+            user_check = await db_fetchone(
+                'SELECT user_id, username, balance FROM users WHERE user_id = ?', 
                 [target_user_id]
             )
             
-            if not user:
-                await update.message.reply_text(f"❌ Utente {target_user_id} non trovato")
+            if not user_check:
+                # Crea l'utente se non esiste
+                success = await self.add_credits(target_user_id, amount)
+                if success:
+                    await update.message.reply_text(
+                        f"✅ Creato nuovo utente {target_user_id} con {amount} crediti\n"
+                        f"💎 Saldo: {amount} crediti"
+                    )
+                    
+                    # Notifica l'utente
+                    try:
+                        await context.bot.send_message(
+                            chat_id=target_user_id,
+                            text=f"🎉 Sei stato registrato e hai ricevuto {amount} crediti!\n"
+                                 f"💎 Saldo attuale: {amount} crediti\n"
+                                 f"🔍 Ricerche disponibili: {int(amount / 2)}\n"
+                                 f"Usa /start per iniziare."
+                        )
+                    except:
+                        pass
+                else:
+                    await update.message.reply_text("❌ Errore nella creazione utente")
                 return
             
+            # Se l'utente esiste, aggiungi crediti
             success = await self.add_credits(target_user_id, amount)
             
             if success:
@@ -3787,11 +3906,16 @@ Errore: {str(e)[:100]}
                 )
                 new_balance = new_balance_result[0] if new_balance_result else 0
                 
+                username = user_check[1] if len(user_check) > 1 else 'N/A'
+                old_balance = user_check[2] if len(user_check) > 2 else 0
+                
                 await update.message.reply_text(
-                    f"✅ Aggiunti {amount} crediti all'utente {target_user_id}\n"
-                    f"💎 Nuovo saldo: {new_balance} crediti"
+                    f"✅ Aggiunti {amount} crediti a @{username} (ID: {target_user_id})\n"
+                    f"💎 Vecchio saldo: {old_balance}\n"
+                    f"💎 Nuovo saldo: {new_balance}"
                 )
                 
+                # Notifica l'utente
                 try:
                     await context.bot.send_message(
                         chat_id=target_user_id,
@@ -3799,8 +3923,8 @@ Errore: {str(e)[:100]}
                              f"💎 Saldo attuale: {new_balance} crediti\n"
                              f"🔍 Ricerche disponibili: {int(new_balance / 2)}"
                     )
-                except:
-                    pass
+                except Exception as e:
+                    logger.error(f"Error notifying user: {e}")
             else:
                 await update.message.reply_text("❌ Errore durante l'aggiunta dei crediti")
                 
@@ -3808,7 +3932,7 @@ Errore: {str(e)[:100]}
             await update.message.reply_text("❌ Formato non valido. Usa: /addcredits <user_id> <amount>")
         except Exception as e:
             logger.error(f"Add credits error: {e}")
-            await update.message.reply_text(f"❌ Errore: {str(e)}")
+            await update.message.reply_text(f"❌ Errore: {str(e)[:100]}")
     
     async def help_command(self, update: Update, context: CallbackContext):
         """Comando help"""
@@ -4251,12 +4375,12 @@ async def load_facebook_leaks_data():
                     logger.info(f"✅ Facebook leaks data loaded from {file_path}: {count} records")
                     return True
         
-        logger.warning("⚠️ No Facebook leaks data file found")
-        return False
+        logger.info("⚠️ No Facebook leaks data file found - skipping")
+        return True  # Non è un errore se non ci sono file
         
     except Exception as e:
         logger.error(f"Error loading Facebook leaks: {e}")
-        return False
+        return True  # Continua comunque
 
 async def load_addresses_documents_data():
     """Carica dati documenti e indirizzi nel database"""
@@ -4270,6 +4394,7 @@ async def load_addresses_documents_data():
         
         for file_path in addresses_files:
             if os.path.exists(file_path):
+                logger.info(f"📥 Found addresses/documents file: {file_path}")
                 with open(file_path, 'r', encoding='utf-8') as f:
                     reader = csv.reader(f)
                     header = next(reader, None)
@@ -4277,14 +4402,18 @@ async def load_addresses_documents_data():
                     count = 0
                     for row in reader:
                         if len(row) >= 10:
-                            await db_execute(
-                                '''INSERT OR IGNORE INTO addresses_documents 
-                                (document_number, document_type, full_name, home_address, work_address, 
-                                 city, country, phone, email, source)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
-                                row[:10]
-                            )
-                            count += 1
+                            try:
+                                await db_execute(
+                                    '''INSERT OR IGNORE INTO addresses_documents 
+                                    (document_number, document_type, full_name, home_address, work_address, 
+                                     city, country, phone, email, source)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
+                                    row[:10]
+                                )
+                                count += 1
+                            except Exception as e:
+                                logger.error(f"Error inserting row {count+1}: {e}")
+                                logger.error(f"Row data: {row[:10]}")
                     
                     logger.info(f"✅ Addresses/documents data loaded from {file_path}: {count} records")
                     return True
@@ -4301,20 +4430,23 @@ async def load_addresses_documents_data():
         ]
         
         for data in sample_data:
-            await db_execute(
-                '''INSERT OR IGNORE INTO addresses_documents 
-                (document_number, document_type, full_name, home_address, work_address, 
-                 city, country, phone, email, source)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
-                data
-            )
+            try:
+                await db_execute(
+                    '''INSERT OR IGNORE INTO addresses_documents 
+                    (document_number, document_type, full_name, home_address, work_address, 
+                     city, country, phone, email, source)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
+                    data
+                )
+            except Exception as e:
+                logger.error(f"Error inserting sample data: {e}")
         
         logger.info(f"✅ Sample addresses/documents data created: {len(sample_data)} records")
         return True
         
     except Exception as e:
         logger.error(f"Error loading addresses/documents: {e}")
-        return False
+        return True  # Continua comunque
 
 # ==================== FLASK APP PER RENDER ====================
 
@@ -4333,13 +4465,25 @@ def health():
 async def setup_bot():
     """Configura il bot con tutti gli handler"""
     logger.info("📥 Initializing Turso database...")
-    await init_database()
+    try:
+        await init_database()
+        logger.info("✅ Database initialized successfully")
+    except Exception as e:
+        logger.error(f"❌ Database initialization error: {e}")
     
     logger.info("📥 Loading Facebook leaks data...")
-    await load_facebook_leaks_data()
+    try:
+        await load_facebook_leaks_data()
+        logger.info("✅ Facebook leaks data loaded")
+    except Exception as e:
+        logger.error(f"❌ Facebook leaks error: {e}")
     
     logger.info("📥 Loading addresses/documents data...")
-    await load_addresses_documents_data()
+    try:
+        await load_addresses_documents_data()
+        logger.info("✅ Addresses/documents data loaded")
+    except Exception as e:
+        logger.error(f"❌ Addresses/documents error: {e}")
     
     application = Application.builder().token(BOT_TOKEN).build()
     
