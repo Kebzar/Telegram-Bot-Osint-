@@ -1,7 +1,6 @@
 import os
 import logging
 import asyncio
-import sqlite3
 import hashlib
 import base64
 import json
@@ -22,6 +21,9 @@ import dns.resolver
 from bs4 import BeautifulSoup
 import shodan
 from flask import Flask, request
+
+# Aggiungi questa import per Turso
+from libsql_client import create_client
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -215,18 +217,57 @@ translations = {
     }
 }
 
-# Database setup
-db_path = os.environ.get('DATABASE_URL', 'leakosint_bot.db')
-if db_path.startswith('postgres://'):
-    # Render usa PostgreSQL, converti in formato SQLite in memoria
-    logger.warning("⚠️ Render usa PostgreSQL, ma questo bot usa SQLite. Usando database in memoria.")
-    conn = sqlite3.connect(':memory:', check_same_thread=False)
+# ==================== DATABASE SETUP - TURSO REMOTO ====================
+TURSO_DATABASE_URL = os.environ.get('TURSO_DATABASE_URL')
+TURSO_AUTH_TOKEN = os.environ.get('TURSO_AUTH_TOKEN')
+
+if TURSO_DATABASE_URL and TURSO_AUTH_TOKEN:
+    # Connessione a Turso remoto
+    client = create_client(url=TURSO_DATABASE_URL, auth_token=TURSO_AUTH_TOKEN)
+    logger.info("Connesso a Turso remoto con successo! Database: relevant-asgardian")
+
+    # Funzioni helper per query
+    def execute_query(sql: str, params=()):
+        result = client.execute(sql, params)
+        return result
+
+    def fetchall_query(sql: str, params=()):
+        result = execute_query(sql, params)
+        return result.rows if result.rows else []
+
+    def fetchone_query(sql: str, params=()):
+        result = execute_query(sql, params)
+        return result.rows[0] if result.rows else None
+
+    def executemany_query(sql: str, params_list):
+        for params in params_list:
+            execute_query(sql, params)
+
 else:
-    conn = sqlite3.connect(db_path, check_same_thread=False)
-c = conn.cursor()
+    # Fallback locale solo per test su PC
+    import sqlite3
+    conn = sqlite3.connect('leakosint_bot.db', check_same_thread=False)
+    c = conn.cursor()
+    logger.warning("Usando SQLite locale (fallback per sviluppo)")
+    
+    # Funzioni helper per compatibilità
+    def execute_query(sql: str, params=()):
+        return c.execute(sql, params)
+    
+    def fetchall_query(sql: str, params=()):
+        c.execute(sql, params)
+        return c.fetchall()
+    
+    def fetchone_query(sql: str, params=()):
+        c.execute(sql, params)
+        return c.fetchone()
+    
+    def executemany_query(sql: str, params_list):
+        c.executemany(sql, params_list)
+        conn.commit()
 
 # Tabelle database
-c.execute('''CREATE TABLE IF NOT EXISTS users (
+execute_query('''CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY,
     username TEXT,
     balance INTEGER DEFAULT 4,
@@ -237,7 +278,7 @@ c.execute('''CREATE TABLE IF NOT EXISTS users (
     language TEXT DEFAULT 'en'  -- CAMBIATO DA 'it' A 'en'
 )''')
 
-c.execute('''CREATE TABLE IF NOT EXISTS searches (
+execute_query('''CREATE TABLE IF NOT EXISTS searches (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
     query TEXT,
@@ -246,7 +287,7 @@ c.execute('''CREATE TABLE IF NOT EXISTS searches (
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
 )''')
 
-c.execute('''CREATE TABLE IF NOT EXISTS breach_data (
+execute_query('''CREATE TABLE IF NOT EXISTS breach_data (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT,
     phone TEXT,
@@ -261,7 +302,7 @@ c.execute('''CREATE TABLE IF NOT EXISTS breach_data (
     found_date DATETIME DEFAULT CURRENT_TIMESTAMP
 )''')
 
-c.execute('''CREATE TABLE IF NOT EXISTS facebook_leaks (
+execute_query('''CREATE TABLE IF NOT EXISTS facebook_leaks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     phone TEXT,
     facebook_id TEXT,
@@ -278,7 +319,7 @@ c.execute('''CREATE TABLE IF NOT EXISTS facebook_leaks (
 )''')
 
 # NUOVA TABELLA PER INDIRIZZI E DOCUMENTI
-c.execute('''CREATE TABLE IF NOT EXISTS addresses_documents (
+execute_query('''CREATE TABLE IF NOT EXISTS addresses_documents (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     document_number TEXT,
     document_type TEXT,
@@ -293,7 +334,8 @@ c.execute('''CREATE TABLE IF NOT EXISTS addresses_documents (
     found_date DATETIME DEFAULT CURRENT_TIMESTAMP
 )''')
 
-conn.commit()
+if not (TURSO_DATABASE_URL and TURSO_AUTH_TOKEN):
+    conn.commit()
 
 # ==================== CLASSI PRINCIPALI ====================
 
@@ -389,10 +431,9 @@ class LeakSearchAPI:
             except Exception as e:
                 logger.error(f"Dehashed document error: {e}")
         
-        c.execute('''SELECT * FROM addresses_documents WHERE 
+        db_results = fetchall_query('''SELECT * FROM addresses_documents WHERE 
                     document_number LIKE ? OR document_number = ? LIMIT 10''',
                  (f'%{doc_clean}%', doc_clean))
-        db_results = c.fetchall()
         
         for row in db_results:
             results.append({
@@ -463,10 +504,9 @@ class LeakSearchAPI:
             except Exception as e:
                 logger.error(f"Dehashed home address error: {e}")
         
-        c.execute('''SELECT * FROM addresses_documents WHERE 
+        db_results = fetchall_query('''SELECT * FROM addresses_documents WHERE 
                     home_address LIKE ? OR address LIKE ? LIMIT 10''',
                  (f'%{address_clean}%', f'%{address_clean}%'))
-        db_results = c.fetchall()
         
         for row in db_results:
             if row[4]:
@@ -481,10 +521,9 @@ class LeakSearchAPI:
                     'email': row[9]
                 })
         
-        c.execute('''SELECT * FROM facebook_leaks WHERE 
+        fb_results = fetchall_query('''SELECT * FROM facebook_leaks WHERE 
                     city LIKE ? OR country LIKE ? LIMIT 10''',
                  (f'%{address_clean}%', f'%{address_clean}%'))
-        fb_results = c.fetchall()
         
         for row in fb_results:
             results.append({
@@ -532,10 +571,9 @@ class LeakSearchAPI:
             except Exception as e:
                 logger.error(f"Dehashed work address error: {e}")
         
-        c.execute('''SELECT * FROM addresses_documents WHERE 
+        db_results = fetchall_query('''SELECT * FROM addresses_documents WHERE 
                     work_address LIKE ? OR company LIKE ? LIMIT 10''',
                  (f'%{address_clean}%', f'%{address_clean}%'))
-        db_results = c.fetchall()
         
         for row in db_results:
             if row[5]:
@@ -551,10 +589,9 @@ class LeakSearchAPI:
                     'email': row[9]
                 })
         
-        c.execute('''SELECT * FROM facebook_leaks WHERE 
+        fb_results = fetchall_query('''SELECT * FROM facebook_leaks WHERE 
                     company LIKE ? LIMIT 10''',
                  (f'%{address_clean}%',))
-        fb_results = c.fetchall()
         
         for row in fb_results:
             if row[9]:
@@ -692,9 +729,8 @@ class LeakSearchAPI:
             except Exception as e:
                 logger.error(f"Dehashed phone error: {e}")
         
-        c.execute('''SELECT * FROM facebook_leaks WHERE phone LIKE ? LIMIT 10''',
+        db_results = fetchall_query('''SELECT * FROM facebook_leaks WHERE phone LIKE ? LIMIT 10''',
                  (f'%{phone_clean[-10:]}%',))
-        db_results = c.fetchall()
         
         for row in db_results:
             results.append({
@@ -956,10 +992,9 @@ class LeakSearchAPI:
         if len(parts) >= 2:
             first_name, last_name = parts[0], parts[1]
             
-            c.execute('''SELECT * FROM facebook_leaks WHERE 
+            db_results = fetchall_query('''SELECT * FROM facebook_leaks WHERE 
                         (name LIKE ? OR surname LIKE ?) LIMIT 15''',
                      (f'%{first_name}%', f'%{last_name}%'))
-            db_results = c.fetchall()
             
             for row in db_results:
                 results.append({
@@ -1301,11 +1336,10 @@ class LeakSearchAPI:
             'search_engines': []
         }
         
-        c.execute('''SELECT * FROM facebook_leaks WHERE 
+        db_results = fetchall_query('''SELECT * FROM facebook_leaks WHERE 
                     name LIKE ? OR surname LIKE ? OR phone LIKE ? 
                     ORDER BY found_date DESC LIMIT 10''',
                  (f'%{query}%', f'%{query}%', f'%{query}%'))
-        db_results = c.fetchall()
         
         for row in db_results:
             results['leak_data'].append({
@@ -1405,9 +1439,8 @@ class LeakSearchAPI:
         results = []
         phone_clean = re.sub(r'[^\d+]', '', phone)[-10:]
         
-        c.execute('''SELECT * FROM facebook_leaks WHERE phone LIKE ? ORDER BY found_date DESC LIMIT 15''',
+        db_results = fetchall_query('''SELECT * FROM facebook_leaks WHERE phone LIKE ? ORDER BY found_date DESC LIMIT 15''',
                  (f'%{phone_clean}%',))
-        db_results = c.fetchall()
         
         for row in db_results:
             results.append({
@@ -1507,8 +1540,7 @@ class LeakSearchAPI:
         results = []
         
         if fb_id.isdigit():
-            c.execute('''SELECT * FROM facebook_leaks WHERE facebook_id = ?''', (fb_id,))
-            db_results = c.fetchall()
+            db_results = fetchall_query('''SELECT * FROM facebook_leaks WHERE facebook_id = ?''', (fb_id,))
             
             for row in db_results:
                 results.append({
@@ -1550,13 +1582,13 @@ class LeakosintBot:
         self.api = LeakSearchAPI()
     
     def get_user_language(self, user_id: int) -> str:
-        c.execute('SELECT language FROM users WHERE user_id = ?', (user_id,))
-        result = c.fetchone()
+        result = fetchone_query('SELECT language FROM users WHERE user_id = ?', (user_id,))
         return result[0] if result and result[0] else 'en'  # Default a 'en'
     
     def set_user_language(self, user_id: int, language: str):
-        c.execute('UPDATE users SET language = ? WHERE user_id = ?', (language, user_id))
-        conn.commit()
+        execute_query('UPDATE users SET language = ? WHERE user_id = ?', (language, user_id))
+        if not (TURSO_DATABASE_URL and TURSO_AUTH_TOKEN):
+            conn.commit()
     
     async def show_main_menu(self, update: Update, context: CallbackContext):
         """Mostra il menu principale con interfaccia"""
@@ -1595,27 +1627,25 @@ class LeakosintBot:
     
     def register_user(self, user_id: int, username: str):
         """Registra un nuovo utente"""
-        c.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
-        if not c.fetchone():
-            c.execute('''INSERT INTO users (user_id, username, balance) 
+        result = fetchone_query('SELECT * FROM users WHERE user_id = ?', (user_id,))
+        if not result:
+            execute_query('''INSERT INTO users (user_id, username, balance) 
                        VALUES (?, ?, 4)''', (user_id, username))
-            conn.commit()
+            if not (TURSO_DATABASE_URL and TURSO_AUTH_TOKEN):
+                conn.commit()
             return True
         return False
     
     def get_user_balance(self, user_id: int) -> int:
-        c.execute('SELECT balance FROM users WHERE user_id = ?', (user_id,))
-        result = c.fetchone()
+        result = fetchone_query('SELECT balance FROM users WHERE user_id = ?', (user_id,))
         return int(result[0]) if result else 0
     
     def get_user_searches(self, user_id: int) -> int:
-        c.execute('SELECT searches FROM users WHERE user_id = ?', (user_id,))
-        result = c.fetchone()
+        result = fetchone_query('SELECT searches FROM users WHERE user_id = ?', (user_id,))
         return result[0] if result else 0
     
     def get_registration_date(self, user_id: int) -> str:
-        c.execute('SELECT registration_date FROM users WHERE user_id = ?', (user_id,))
-        result = c.fetchone()
+        result = fetchone_query('SELECT registration_date FROM users WHERE user_id = ?', (user_id,))
         if result and result[0]:
             try:
                 dt = datetime.strptime(result[0], '%Y-%m-%d %H:%M:%S')
@@ -1625,8 +1655,7 @@ class LeakosintBot:
         return "Sconosciuta"
     
     def get_last_active(self, user_id: int) -> str:
-        c.execute('SELECT last_active FROM users WHERE user_id = ?', (user_id,))
-        result = c.fetchone()
+        result = fetchone_query('SELECT last_active FROM users WHERE user_id = ?', (user_id,))
         if result and result[0]:
             try:
                 dt = datetime.strptime(result[0], '%Y-%m-d %H:%M:%S')
@@ -1636,41 +1665,42 @@ class LeakosintBot:
         return "Sconosciuta"
     
     def get_subscription_type(self, user_id: int) -> str:
-        c.execute('SELECT subscription_type FROM users WHERE user_id = ?', (user_id,))
-        result = c.fetchone()
+        result = fetchone_query('SELECT subscription_type FROM users WHERE user_id = ?', (user_id,))
         return result[0] if result else 'free'
     
     def get_username(self, user_id: int) -> str:
-        c.execute('SELECT username FROM users WHERE user_id = ?', (user_id,))
-        result = c.fetchone()
+        result = fetchone_query('SELECT username FROM users WHERE user_id = ?', (user_id,))
         return result[0] if result else 'N/A'
     
     async def update_balance(self, user_id: int, cost: int = 2) -> bool:
         current = self.get_user_balance(user_id)
         if current >= cost:
             new_balance = current - cost
-            c.execute('''UPDATE users SET balance = ?, searches = searches + 1, 
+            execute_query('''UPDATE users SET balance = ?, searches = searches + 1, 
                        last_active = CURRENT_TIMESTAMP WHERE user_id = ?''', 
                       (new_balance, user_id))
-            conn.commit()
+            if not (TURSO_DATABASE_URL and TURSO_AUTH_TOKEN):
+                conn.commit()
             return True
         return False
     
     def add_credits(self, user_id: int, amount: int) -> bool:
         try:
-            c.execute('''UPDATE users SET balance = balance + ?, 
+            execute_query('''UPDATE users SET balance = balance + ?, 
                        last_active = CURRENT_TIMESTAMP WHERE user_id = ?''', 
                       (amount, user_id))
-            conn.commit()
+            if not (TURSO_DATABASE_URL and TURSO_AUTH_TOKEN):
+                conn.commit()
             return True
         except Exception as e:
             logger.error(f"Error adding credits: {e}")
             return False
     
     def log_search(self, user_id: int, query: str, search_type: str, results: str):
-        c.execute('''INSERT INTO searches (user_id, query, type, results) 
+        execute_query('''INSERT INTO searches (user_id, query, type, results) 
                    VALUES (?, ?, ?, ?)''', (user_id, query, search_type, results))
-        conn.commit()
+        if not (TURSO_DATABASE_URL and TURSO_AUTH_TOKEN):
+            conn.commit()
     
     async def handle_button_callback(self, update: Update, context: CallbackContext):
         """Gestisce i callback dei pulsanti inline"""
@@ -2564,7 +2594,7 @@ Errore: {str(e)[:100]}
         
         total_components = sum(len(v) for v in components.values())
         if total_components == 0:
-            result_text += f"\n\n🔍 NESSUNA INFORMAZIONE STRUTTURATA RILEVATA"
+            result_text += f"\n\n🔍 NESSUNA INFORMAZIONE STRUTTRATA RILEVATA"
             result_text += f"\n📝 Eseguo ricerca standard..."
             
             search_type = self.detect_search_type(query)
@@ -2604,11 +2634,11 @@ Errore: {str(e)[:100]}
             if components['emails'] and components['phones']:
                 for email in components['emails'][:1]:
                     for phone in components['phones'][:1]:
-                        c.execute('''SELECT COUNT(*) FROM breach_data WHERE 
+                        result = fetchone_query('''SELECT COUNT(*) FROM breach_data WHERE 
                                     (email = ? OR phone = ?) AND 
                                     (email = ? OR phone = ?)''',
                                  (email, email, phone, phone))
-                        count = c.fetchone()[0]
+                        count = result[0] if result else 0
                         if count > 0:
                             correlations.append(f"📧 {email} ↔ 📱 {phone}")
             
@@ -2616,20 +2646,20 @@ Errore: {str(e)[:100]}
                 for name in components['names'][:1]:
                     for phone in components['phones'][:1]:
                         phone_clean = re.sub(r'[^\d+]', '', phone)[-10:]
-                        c.execute('''SELECT COUNT(*) FROM facebook_leaks WHERE 
+                        result = fetchone_query('''SELECT COUNT(*) FROM facebook_leaks WHERE 
                                     phone LIKE ? AND (name LIKE ? OR surname LIKE ?)''',
                                  (f'%{phone_clean}%', f'%{name[:5]}%', f'%{name[:5]}%'))
-                        count = c.fetchone()[0]
+                        count = result[0] if result else 0
                         if count > 0:
                             correlations.append(f"👤 {name[:15]}... ↔ 📱 {phone}")
             
             if components['documents'] and components['names']:
                 for doc in components['documents'][:1]:
                     for name in components['names'][:1]:
-                        c.execute('''SELECT COUNT(*) FROM addresses_documents WHERE 
+                        result = fetchone_query('''SELECT COUNT(*) FROM addresses_documents WHERE 
                                     document_number LIKE ? AND full_name LIKE ?''',
                                  (f'%{doc}%', f'%{name}%'))
-                        count = c.fetchone()[0]
+                        count = result[0] if result else 0
                         if count > 0:
                             correlations.append(f"📄 {doc} ↔ 👤 {name[:15]}...")
             
@@ -3411,14 +3441,14 @@ Errore: {str(e)[:100]}
             await update.message.reply_text("❌ Accesso negato")
             return
         
-        c.execute('SELECT COUNT(*) FROM users')
-        total_users = c.fetchone()[0]
+        result = fetchone_query('SELECT COUNT(*) FROM users')
+        total_users = result[0] if result else 0
         
-        c.execute('SELECT COUNT(*) FROM searches')
-        total_searches = c.fetchone()[0]
+        result = fetchone_query('SELECT COUNT(*) FROM searches')
+        total_searches = result[0] if result else 0
         
-        c.execute('SELECT SUM(balance) FROM users')
-        total_credits = c.fetchone()[0] or 0
+        result = fetchone_query('SELECT SUM(balance) FROM users')
+        total_credits = result[0] if result else 0
         
         now = datetime.now()
         mesi = {
@@ -3437,8 +3467,7 @@ Errore: {str(e)[:100]}
 
 👥 Ultimi 5 utenti:"""
         
-        c.execute('SELECT user_id, username, balance, searches FROM users ORDER BY user_id DESC LIMIT 5')
-        users = c.fetchall()
+        users = fetchall_query('SELECT user_id, username, balance, searches FROM users ORDER BY user_id DESC LIMIT 5')
         
         for user in users:
             admin_text += f"\n\n- 👤 ID: {user[0]} | @{user[1] or 'N/A'}"
@@ -3468,8 +3497,7 @@ Errore: {str(e)[:100]}
             target_user_id = int(context.args[0])
             amount = int(context.args[1])
             
-            c.execute('SELECT * FROM users WHERE user_id = ?', (target_user_id,))
-            user = c.fetchone()
+            user = fetchone_query('SELECT * FROM users WHERE user_id = ?', (target_user_id,))
             
             if not user:
                 await update.message.reply_text(f"❌ Utente {target_user_id} non trovato")
@@ -3478,8 +3506,8 @@ Errore: {str(e)[:100]}
             success = self.add_credits(target_user_id, amount)
             
             if success:
-                c.execute('SELECT balance FROM users WHERE user_id = ?', (target_user_id,))
-                new_balance = c.fetchone()[0]
+                result = fetchone_query('SELECT balance FROM users WHERE user_id = ?', (target_user_id,))
+                new_balance = result[0] if result else 0
                 
                 await update.message.reply_text(
                     f"✅ Aggiunti {amount} crediti all'utente {target_user_id}\n"
@@ -3934,12 +3962,13 @@ def load_facebook_leaks_data():
                     count = 0
                     for row in reader:
                         if len(row) >= 11:
-                            c.execute('''INSERT OR IGNORE INTO facebook_leaks 
+                            execute_query('''INSERT OR IGNORE INTO facebook_leaks 
                                        (phone, facebook_id, name, surname, gender, birth_date, city, country, company, relationship_status, leak_date)
                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', row[:11])
                             count += 1
                     
-                    conn.commit()
+                    if not (TURSO_DATABASE_URL and TURSO_AUTH_TOKEN):
+                        conn.commit()
                     logger.info(f"✅ Facebook leaks data loaded from {file_path}: {count} records")
                     return True
         
@@ -3971,13 +4000,14 @@ def load_addresses_documents_data():
                     count = 0
                     for row in reader:
                         if len(row) >= 10:
-                            c.execute('''INSERT OR IGNORE INTO addresses_documents 
+                            execute_query('''INSERT OR IGNORE INTO addresses_documents 
                                        (document_number, document_type, full_name, home_address, work_address, 
                                         city, country, phone, email, source)
                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', row[:10])
                             count += 1
                     
-                    conn.commit()
+                    if not (TURSO_DATABASE_URL and TURSO_AUTH_TOKEN):
+                        conn.commit()
                     logger.info(f"✅ Addresses/documents data loaded from {file_path}: {count} records")
                     return True
         
@@ -3993,12 +4023,13 @@ def load_addresses_documents_data():
         ]
         
         for data in sample_data:
-            c.execute('''INSERT OR IGNORE INTO addresses_documents 
+            execute_query('''INSERT OR IGNORE INTO addresses_documents 
                        (document_number, document_type, full_name, home_address, work_address, 
                         city, country, phone, email, source)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', data)
         
-        conn.commit()
+        if not (TURSO_DATABASE_URL and TURSO_AUTH_TOKEN):
+            conn.commit()
         logger.info(f"✅ Sample addresses/documents data created: {len(sample_data)} records")
         return True
         
