@@ -217,15 +217,26 @@ translations = {
     }
 }
 
-# ==================== DATABASE SETUP - TURSO REMOTO ====================
+# ==================== DATABASE SETUP - TURSO REMOTO (Sincrono) ====================
+import os
+from libsql_experimental import create_client
+
 TURSO_DATABASE_URL = os.environ.get('TURSO_DATABASE_URL')
 TURSO_AUTH_TOKEN = os.environ.get('TURSO_AUTH_TOKEN')
 
 if TURSO_DATABASE_URL and TURSO_AUTH_TOKEN:
-    # Connessione a Turso remoto
-    client = create_client(url=TURSO_DATABASE_URL, auth_token=TURSO_AUTH_TOKEN)
-    logger.info("Connesso a Turso remoto con successo! Database: relevant-asgardian")
-
+    # Connessione sincrona a Turso
+    conn = create_client(url=TURSO_DATABASE_URL, auth_token=TURSO_AUTH_TOKEN)
+    logger.info("Connesso a Turso remoto con successo (sincrono)!")
+    
+    # Cursor compatibile con sqlite3
+    c = conn.cursor()
+else:
+    # Fallback locale
+    import sqlite3
+    conn = sqlite3.connect('leakosint_bot.db', check_same_thread=False)
+    c = conn.cursor()
+    logger.warning("Usando SQLite locale (fallback)")
     # Funzioni helper per query
     def execute_query(sql: str, params=()):
         result = client.execute(sql, params)
