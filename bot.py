@@ -1,6 +1,7 @@
 import os
 import logging
 import asyncio
+import sqlite3
 import hashlib
 import base64
 import json
@@ -10,11 +11,9 @@ import io
 import socket
 import sys
 from datetime import datetime
-from typing import Dict, List, Tuple, Optional, Any
-from urllib.parse import quote_plus, urlparse
-from contextlib import contextmanager
+from typing import Dict, List, Tuple, Optional
+from urllib.parse import quote_plus
 
-import aiohttp
 import requests
 import phonenumbers
 from phonenumbers import carrier, geocoder, timezone
@@ -34,12 +33,6 @@ from telegram.ext import (
     CallbackQueryHandler,
     ConversationHandler
 )
-
-# ==================== CONFIGURAZIONE TURSO ====================
-# Per Turso (libSQL cloud) useremo aiohttp per le query HTTP
-
-TURSO_DB_URL = os.environ.get('TURSO_DB_URL')
-TURSO_AUTH_TOKEN = os.environ.get('TURSO_AUTH_TOKEN')
 
 # Configurazione logging
 logging.basicConfig(
@@ -222,195 +215,85 @@ translations = {
     }
 }
 
-# ==================== TURSO DATABASE MANAGER ====================
-
-class TursoDatabase:
-    """Gestione del database Turso (libSQL) tramite HTTP con timeout corretti"""
-    
-    def __init__(self, db_url: str, auth_token: str):
-        self.db_url = db_url.rstrip('/')
-        self.auth_token = auth_token
-        self.headers = {
-            'Authorization': f'Bearer {auth_token}',
-            'Content-Type': 'application/json'
-        }
-        # NON creare la sessione qui, la creeremo quando serve
-        self.timeout = aiohttp.ClientTimeout(total=30)
-    
-    async def _get_session(self) -> aiohttp.ClientSession:
-        """Crea una nuova sessione per ogni richiesta"""
-        return aiohttp.ClientSession(headers=self.headers, timeout=self.timeout)
-    
-    async def execute(self, query: str, params: Optional[list] = None) -> List[dict]:
-        """Esegue una query sul database Turso"""
-        session = None
-        try:
-            session = await self._get_session()
-            async with session.post(
-                f'{self.db_url}/query',
-                json={'statements': [{'q': query, 'params': params or []}]}
-            ) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    if data.get('results'):
-                        return data['results'][0].get('rows', [])
-                logger.error(f"Turso query error: HTTP {response.status}")
-                return []
-        except asyncio.TimeoutError:
-            logger.error("Turso query timeout after 30 seconds")
-            return []
-        except Exception as e:
-            logger.error(f"Turso query error: {e}")
-            return []
-        finally:
-            if session:
-                await session.close()
-    
-    async def fetchone(self, query: str, params: Optional[list] = None) -> Optional[tuple]:
-        """Esegue una query e restituisce un solo risultato"""
-        results = await self.execute(query, params)
-        return tuple(results[0]) if results else None
-    
-    async def fetchall(self, query: str, params: Optional[list] = None) -> List[tuple]:
-        """Esegue una query e restituisce tutti i risultati"""
-        results = await self.execute(query, params)
-        return [tuple(row) for row in results]
-    
-    async def execute_many(self, queries: List[str]) -> bool:
-        """Esegue multiple query"""
-        session = None
-        try:
-            session = await self._get_session()
-            statements = [{'q': query, 'params': []} for query in queries]
-            async with session.post(
-                f'{self.db_url}/query',
-                json={'statements': statements}
-            ) as response:
-                return response.status == 200
-        except Exception as e:
-            logger.error(f"Turso execute_many error: {e}")
-            return False
-        finally:
-            if session:
-                await session.close()
-    
-    async def close(self):
-        """Metodo mantenuto per compatibilità"""
-        pass
-
-# Inizializzazione del database Turso
-if TURSO_DB_URL and TURSO_AUTH_TOKEN:
-    turso_db = TursoDatabase(TURSO_DB_URL, TURSO_AUTH_TOKEN)
+# Database setup
+db_path = os.environ.get('DATABASE_URL', 'leakosint_bot.db')
+if db_path.startswith('postgres://'):
+    # Render usa PostgreSQL, converti in formato SQLite in memoria
+    logger.warning("⚠️ Render usa PostgreSQL, ma questo bot usa SQLite. Usando database in memoria.")
+    conn = sqlite3.connect(':memory:', check_same_thread=False)
 else:
-    logger.error("❌ TURSO_DB_URL e TURSO_AUTH_TOKEN non configurati!")
-    # Crea un database fittizio per il testing invece di uscire
-    logger.warning("⚠️ Usando database mock per testing")
-    class MockTursoDatabase:
-        async def execute(self, query: str, params=None):
-            return []
-        async def fetchone(self, query: str, params=None):
-            return None
-        async def fetchall(self, query: str, params=None):
-            return []
-        async def execute_many(self, queries):
-            return True
-        async def close(self):
-            pass
+    conn = sqlite3.connect(db_path, check_same_thread=False)
+c = conn.cursor()
 
-    turso_db = MockTursoDatabase()
+# Tabelle database
+c.execute('''CREATE TABLE IF NOT EXISTS users (
+    user_id INTEGER PRIMARY KEY,
+    username TEXT,
+    balance INTEGER DEFAULT 4,
+    searches INTEGER DEFAULT 0,
+    registration_date TEXT DEFAULT CURRENT_TIMESTAMP,
+    subscription_type TEXT DEFAULT 'free',
+    last_active TEXT DEFAULT CURRENT_TIMESTAMP,
+    language TEXT DEFAULT 'en'  -- CAMBIATO DA 'it' A 'en'
+)''')
 
-# ==================== FUNZIONI DATABASE COMPATIBILITÀ ====================
+c.execute('''CREATE TABLE IF NOT EXISTS searches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    query TEXT,
+    type TEXT,
+    results TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+)''')
 
-async def db_execute(query: str, params: Optional[list] = None):
-    """Funzione wrapper per compatibilità"""
-    return await turso_db.execute(query, params)
+c.execute('''CREATE TABLE IF NOT EXISTS breach_data (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT,
+    phone TEXT,
+    name TEXT,
+    surname TEXT,
+    username TEXT,
+    password TEXT,
+    hash TEXT,
+    source TEXT,
+    breach_name TEXT,
+    breach_date TEXT,
+    found_date DATETIME DEFAULT CURRENT_TIMESTAMP
+)''')
 
-async def db_fetchone(query: str, params: Optional[list] = None):
-    """Funzione wrapper per compatibilità"""
-    return await turso_db.fetchone(query, params)
+c.execute('''CREATE TABLE IF NOT EXISTS facebook_leaks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    phone TEXT,
+    facebook_id TEXT,
+    name TEXT,
+    surname TEXT,
+    gender TEXT,
+    birth_date TEXT,
+    city TEXT,
+    country TEXT,
+    company TEXT,
+    relationship_status TEXT,
+    leak_date TEXT,
+    found_date DATETIME DEFAULT CURRENT_TIMESTAMP
+)''')
 
-async def db_fetchall(query: str, params: Optional[list] = None):
-    """Funzione wrapper per compatibilità"""
-    return await turso_db.fetchall(query, params)
+# NUOVA TABELLA PER INDIRIZZI E DOCUMENTI
+c.execute('''CREATE TABLE IF NOT EXISTS addresses_documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    document_number TEXT,
+    document_type TEXT,
+    full_name TEXT,
+    home_address TEXT,
+    work_address TEXT,
+    city TEXT,
+    country TEXT,
+    phone TEXT,
+    email TEXT,
+    source TEXT,
+    found_date DATETIME DEFAULT CURRENT_TIMESTAMP
+)''')
 
-# ==================== INIZIALIZZAZIONE TABELLE ====================
-
-async def init_database():
-    """Inizializza le tabelle del database"""
-    create_tables_queries = [
-        '''CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            username TEXT,
-            balance INTEGER DEFAULT 4,
-            searches INTEGER DEFAULT 0,
-            registration_date TEXT DEFAULT CURRENT_TIMESTAMP,
-            subscription_type TEXT DEFAULT 'free',
-            last_active TEXT DEFAULT CURRENT_TIMESTAMP,
-            language TEXT DEFAULT 'en'
-        )''',
-        
-        '''CREATE TABLE IF NOT EXISTS searches (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            query TEXT,
-            type TEXT,
-            results TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-        )''',
-        
-        '''CREATE TABLE IF NOT EXISTS breach_data (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            email TEXT,
-            phone TEXT,
-            name TEXT,
-            surname TEXT,
-            username TEXT,
-            password TEXT,
-            hash TEXT,
-            source TEXT,
-            breach_name TEXT,
-            breach_date TEXT,
-            found_date DATETIME DEFAULT CURRENT_TIMESTAMP
-        )''',
-        
-        '''CREATE TABLE IF NOT EXISTS facebook_leaks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            phone TEXT,
-            facebook_id TEXT,
-            name TEXT,
-            surname TEXT,
-            gender TEXT,
-            birth_date TEXT,
-            city TEXT,
-            country TEXT,
-            company TEXT,
-            relationship_status TEXT,
-            leak_date TEXT,
-            found_date DATETIME DEFAULT CURRENT_TIMESTAMP
-        )''',
-        
-        '''CREATE TABLE IF NOT EXISTS addresses_documents (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            document_number TEXT,
-            document_type TEXT,
-            full_name TEXT,
-            home_address TEXT,
-            work_address TEXT,
-            city TEXT,
-            country TEXT,
-            phone TEXT,
-            email TEXT,
-            source TEXT,
-            found_date DATETIME DEFAULT CURRENT_TIMESTAMP
-        )'''
-    ]
-    
-    for query in create_tables_queries:
-        try:
-            await db_execute(query)
-            logger.info(f"Table created/verified: {query[:50]}...")
-        except Exception as e:
-            logger.error(f"Error creating table: {e}")
+conn.commit()
 
 # ==================== CLASSI PRINCIPALI ====================
 
@@ -418,16 +301,10 @@ class LeakSearchAPI:
     """API per ricerche nei data breach reali"""
     
     def __init__(self):
-        # Rimuovi la sessione persistente
-        pass
-    
-    def _get_session(self) -> requests.Session:
-        """Crea una nuova sessione requests"""
-        session = requests.Session()
-        session.headers.update({
+        self.session = requests.Session()
+        self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         })
-        return session
     
     def is_email(self, text: str) -> bool:
         """Verifica se il testo è un'email"""
@@ -488,11 +365,10 @@ class LeakSearchAPI:
         doc_clean = document_number.upper().strip()
         
         if DEHASHED_API_KEY:
-            session = self._get_session()
             try:
                 auth = base64.b64encode(f"{DEHASHED_EMAIL}:{DEHASHED_API_KEY}".encode()).decode()
                 headers = {'Authorization': f'Basic {auth}'}
-                response = session.get(
+                response = self.session.get(
                     f'https://api.dehashed.com/search?query={quote_plus(doc_clean)}',
                     headers=headers, timeout=15
                 )
@@ -512,38 +388,30 @@ class LeakSearchAPI:
                             })
             except Exception as e:
                 logger.error(f"Dehashed document error: {e}")
-            finally:
-                session.close()
         
-        # Ricerca nel database Turso
-        try:
-            db_results = await db_fetchall(
-                '''SELECT * FROM addresses_documents WHERE 
-                document_number LIKE ? OR document_number = ? LIMIT 10''',
-                [f'%{doc_clean}%', doc_clean]
-            )
-            
-            for row in db_results:
-                results.append({
-                    'source': 'Turso Database',
-                    'document_type': row[2] if len(row) > 2 else 'Unknown',
-                    'document_number': row[1] if len(row) > 1 else doc_clean,
-                    'full_name': row[3] if len(row) > 3 else 'Unknown',
-                    'home_address': row[4] if len(row) > 4 else None,
-                    'work_address': row[5] if len(row) > 5 else None,
-                    'city': row[6] if len(row) > 6 else None,
-                    'phone': row[8] if len(row) > 8 else None,
-                    'email': row[9] if len(row) > 9 else None
-                })
-        except Exception as e:
-            logger.error(f"Turso document search error: {e}")
+        c.execute('''SELECT * FROM addresses_documents WHERE 
+                    document_number LIKE ? OR document_number = ? LIMIT 10''',
+                 (f'%{doc_clean}%', doc_clean))
+        db_results = c.fetchall()
+        
+        for row in db_results:
+            results.append({
+                'source': 'Local Database',
+                'document_type': row[2],
+                'document_number': row[1],
+                'full_name': row[3],
+                'home_address': row[4],
+                'work_address': row[5],
+                'city': row[6],
+                'phone': row[8],
+                'email': row[9]
+            })
         
         if SNUSBASE_API_KEY:
-            session = self._get_session()
             try:
                 headers = {'Auth': SNUSBASE_API_KEY}
                 data = {'terms': [doc_clean], 'types': ['id']}
-                response = session.post(
+                response = self.session.post(
                     'https://api.snusbase.com/v3/search',
                     headers=headers, json=data, timeout=20
                 )
@@ -561,8 +429,6 @@ class LeakSearchAPI:
                             })
             except Exception as e:
                 logger.error(f"Snusbase document error: {e}")
-            finally:
-                session.close()
         
         return {'found': len(results) > 0, 'results': results, 'count': len(results)}
     
@@ -572,11 +438,10 @@ class LeakSearchAPI:
         address_clean = address.strip()
         
         if DEHASHED_API_KEY:
-            session = self._get_session()
             try:
                 auth = base64.b64encode(f"{DEHASHED_EMAIL}:{DEHASHED_API_KEY}".encode()).decode()
                 headers = {'Authorization': f'Basic {auth}'}
-                response = session.get(
+                response = self.session.get(
                     f'https://api.dehashed.com/search?query={quote_plus(address_clean)}+home',
                     headers=headers, timeout=15
                 )
@@ -597,52 +462,41 @@ class LeakSearchAPI:
                                 })
             except Exception as e:
                 logger.error(f"Dehashed home address error: {e}")
-            finally:
-                session.close()
         
-        # Ricerca nel database Turso
-        try:
-            db_results = await db_fetchall(
-                '''SELECT * FROM addresses_documents WHERE 
-                home_address LIKE ? OR document_number LIKE ? LIMIT 10''',
-                [f'%{address_clean}%', f'%{address_clean}%']
-            )
-            
-            for row in db_results:
-                if row[4] and len(row) > 4:
-                    results.append({
-                        'source': 'Turso Database',
-                        'address_type': 'home',
-                        'address': row[4],
-                        'full_name': row[3] if len(row) > 3 else 'Unknown',
-                        'document_number': row[1] if len(row) > 1 else None,
-                        'city': row[6] if len(row) > 6 else None,
-                        'phone': row[8] if len(row) > 8 else None,
-                        'email': row[9] if len(row) > 9 else None
-                    })
-        except Exception as e:
-            logger.error(f"Turso home address search error: {e}")
+        c.execute('''SELECT * FROM addresses_documents WHERE 
+                    home_address LIKE ? OR address LIKE ? LIMIT 10''',
+                 (f'%{address_clean}%', f'%{address_clean}%'))
+        db_results = c.fetchall()
         
-        try:
-            fb_results = await db_fetchall(
-                '''SELECT * FROM facebook_leaks WHERE 
-                city LIKE ? OR country LIKE ? LIMIT 10''',
-                [f'%{address_clean}%', f'%{address_clean}%']
-            )
-            
-            for row in fb_results:
+        for row in db_results:
+            if row[4]:
                 results.append({
-                    'source': 'Facebook Leak 2021',
-                    'address_type': 'city/country',
-                    'city': row[7] if len(row) > 7 else None,
-                    'country': row[8] if len(row) > 8 else None,
-                    'full_name': f"{row[3] if len(row) > 3 else ''} {row[4] if len(row) > 4 else ''}",
-                    'phone': row[1] if len(row) > 1 else None,
-                    'facebook_id': row[2] if len(row) > 2 else None,
-                    'company': row[9] if len(row) > 9 else None
+                    'source': 'Local Database',
+                    'address_type': 'home',
+                    'address': row[4],
+                    'full_name': row[3],
+                    'document_number': row[1],
+                    'city': row[6],
+                    'phone': row[8],
+                    'email': row[9]
                 })
-        except Exception as e:
-            logger.error(f"Turso facebook address search error: {e}")
+        
+        c.execute('''SELECT * FROM facebook_leaks WHERE 
+                    city LIKE ? OR country LIKE ? LIMIT 10''',
+                 (f'%{address_clean}%', f'%{address_clean}%'))
+        fb_results = c.fetchall()
+        
+        for row in fb_results:
+            results.append({
+                'source': 'Facebook Leak 2021',
+                'address_type': 'city/country',
+                'city': row[7],
+                'country': row[8],
+                'full_name': f"{row[3]} {row[4]}",
+                'phone': row[1],
+                'facebook_id': row[2],
+                'company': row[9]
+            })
         
         return {'found': len(results) > 0, 'results': results, 'count': len(results)}
     
@@ -652,11 +506,10 @@ class LeakSearchAPI:
         address_clean = address.strip()
         
         if DEHASHED_API_KEY:
-            session = self._get_session()
             try:
                 auth = base64.b64encode(f"{DEHASHED_EMAIL}:{DEHASHED_API_KEY}".encode()).decode()
                 headers = {'Authorization': f'Basic {auth}'}
-                response = session.get(
+                response = self.session.get(
                     f'https://api.dehashed.com/search?query={quote_plus(address_clean)}+work+company',
                     headers=headers, timeout=15
                 )
@@ -678,59 +531,47 @@ class LeakSearchAPI:
                                 })
             except Exception as e:
                 logger.error(f"Dehashed work address error: {e}")
-            finally:
-                session.close()
         
-        # Ricerca nel database Turso
-        try:
-            db_results = await db_fetchall(
-                '''SELECT * FROM addresses_documents WHERE 
-                work_address LIKE ? OR home_address LIKE ? LIMIT 10''',
-                [f'%{address_clean}%', f'%{address_clean}%']
-            )
-            
-            for row in db_results:
-                if len(row) > 5 and row[5]:
-                    results.append({
-                        'source': 'Turso Database',
-                        'address_type': 'work',
-                        'company': row[10] if len(row) > 10 else None,
-                        'address': row[5],
-                        'full_name': row[3] if len(row) > 3 else 'Unknown',
-                        'document_number': row[1] if len(row) > 1 else None,
-                        'city': row[6] if len(row) > 6 else None,
-                        'phone': row[8] if len(row) > 8 else None,
-                        'email': row[9] if len(row) > 9 else None
-                    })
-        except Exception as e:
-            logger.error(f"Turso work address search error: {e}")
+        c.execute('''SELECT * FROM addresses_documents WHERE 
+                    work_address LIKE ? OR company LIKE ? LIMIT 10''',
+                 (f'%{address_clean}%', f'%{address_clean}%'))
+        db_results = c.fetchall()
         
-        try:
-            fb_results = await db_fetchall(
-                '''SELECT * FROM facebook_leaks WHERE 
-                company LIKE ? LIMIT 10''',
-                [f'%{address_clean}%']
-            )
-            
-            for row in fb_results:
-                if len(row) > 9 and row[9]:
-                    results.append({
-                        'source': 'Facebook Leak 2021',
-                        'address_type': 'company',
-                        'company': row[9],
-                        'full_name': f"{row[3] if len(row) > 3 else ''} {row[4] if len(row) > 4 else ''}",
-                        'phone': row[1] if len(row) > 1 else None,
-                        'facebook_id': row[2] if len(row) > 2 else None,
-                        'city': row[7] if len(row) > 7 else None,
-                        'country': row[8] if len(row) > 8 else None
-                    })
-        except Exception as e:
-            logger.error(f"Turso facebook company search error: {e}")
+        for row in db_results:
+            if row[5]:
+                results.append({
+                    'source': 'Local Database',
+                    'address_type': 'work',
+                    'company': row[10] if len(row) > 10 else None,
+                    'address': row[5],
+                    'full_name': row[3],
+                    'document_number': row[1],
+                    'city': row[6],
+                    'phone': row[8],
+                    'email': row[9]
+                })
+        
+        c.execute('''SELECT * FROM facebook_leaks WHERE 
+                    company LIKE ? LIMIT 10''',
+                 (f'%{address_clean}%',))
+        fb_results = c.fetchall()
+        
+        for row in fb_results:
+            if row[9]:
+                results.append({
+                    'source': 'Facebook Leak 2021',
+                    'address_type': 'company',
+                    'company': row[9],
+                    'full_name': f"{row[3]} {row[4]}",
+                    'phone': row[1],
+                    'facebook_id': row[2],
+                    'city': row[7],
+                    'country': row[8]
+                })
         
         if HUNTER_API_KEY:
-            session = self._get_session()
             try:
-                response = session.get(
+                response = self.session.get(
                     f'https://api.hunter.io/v2/domain-search?company={quote_plus(address_clean)}&api_key={HUNTER_API_KEY}',
                     timeout=10
                 )
@@ -742,14 +583,12 @@ class LeakSearchAPI:
                                 'source': 'Hunter.io',
                                 'company': address_clean,
                                 'email': email.get('value'),
-                                'name': f"{email.get('first_name', '')} {email.get('last_name', '')}".strip(),
+                                'name': email.get('first_name', '') + ' ' + email.get('last_name', ''),
                                 'position': email.get('position'),
                                 'type': 'work_email'
                             })
             except Exception as e:
                 logger.error(f"Hunter work address error: {e}")
-            finally:
-                session.close()
         
         return {'found': len(results) > 0, 'results': results, 'count': len(results)}
     
@@ -758,10 +597,9 @@ class LeakSearchAPI:
         results = []
         
         if HIBP_API_KEY:
-            session = self._get_session()
             try:
                 headers = {'hibp-api-key': HIBP_API_KEY}
-                response = session.get(
+                response = self.session.get(
                     f'https://haveibeenpwned.com/api/v3/breachedaccount/{email}',
                     headers=headers, timeout=10
                 )
@@ -777,15 +615,12 @@ class LeakSearchAPI:
                         })
             except Exception as e:
                 logger.error(f"HIBP error: {e}")
-            finally:
-                session.close()
         
         if DEHASHED_API_KEY:
-            session = self._get_session()
             try:
                 auth = base64.b64encode(f"{DEHASHED_EMAIL}:{DEHASHED_API_KEY}".encode()).decode()
                 headers = {'Authorization': f'Basic {auth}'}
-                response = session.get(
+                response = self.session.get(
                     f'https://api.dehashed.com/search?query={quote_plus(email)}',
                     headers=headers, timeout=15
                 )
@@ -803,15 +638,12 @@ class LeakSearchAPI:
                             })
             except Exception as e:
                 logger.error(f"Dehashed error: {e}")
-            finally:
-                session.close()
         
         if SNUSBASE_API_KEY:
-            session = self._get_session()
             try:
                 headers = {'Auth': SNUSBASE_API_KEY}
                 data = {'terms': [email], 'types': ['email']}
-                response = session.post(
+                response = self.session.post(
                     'https://api.snusbase.com/v3/search',
                     headers=headers, json=data, timeout=20
                 )
@@ -828,8 +660,6 @@ class LeakSearchAPI:
                             })
             except Exception as e:
                 logger.error(f"Snusbase error: {e}")
-            finally:
-                session.close()
         
         return {'found': len(results) > 0, 'results': results, 'count': len(results)}
     
@@ -839,11 +669,10 @@ class LeakSearchAPI:
         phone_clean = re.sub(r'[^\d+]', '', phone)
         
         if DEHASHED_API_KEY:
-            session = self._get_session()
             try:
                 auth = base64.b64encode(f"{DEHASHED_EMAIL}:{DEHASHED_API_KEY}".encode()).decode()
                 headers = {'Authorization': f'Basic {auth}'}
-                response = session.get(
+                response = self.session.get(
                     f'https://api.dehashed.com/search?query={quote_plus(phone_clean)}',
                     headers=headers, timeout=15
                 )
@@ -862,36 +691,28 @@ class LeakSearchAPI:
                             })
             except Exception as e:
                 logger.error(f"Dehashed phone error: {e}")
-            finally:
-                session.close()
         
-        # Ricerca nel database Turso
-        try:
-            db_results = await db_fetchall(
-                '''SELECT * FROM facebook_leaks WHERE phone LIKE ? LIMIT 10''',
-                [f'%{phone_clean[-10:]}%']
-            )
-            
-            for row in db_results:
-                results.append({
-                    'source': 'Facebook Leak 2021',
-                    'phone': row[1] if len(row) > 1 else None,
-                    'facebook_id': row[2] if len(row) > 2 else None,
-                    'name': f"{row[3] if len(row) > 3 else ''} {row[4] if len(row) > 4 else ''}",
-                    'gender': row[5] if len(row) > 5 else None,
-                    'birth_date': row[6] if len(row) > 6 else None,
-                    'city': row[7] if len(row) > 7 else None,
-                    'country': row[8] if len(row) > 8 else None,
-                    'company': row[9] if len(row) > 9 else None
-                })
-        except Exception as e:
-            logger.error(f"Turso phone search error: {e}")
+        c.execute('''SELECT * FROM facebook_leaks WHERE phone LIKE ? LIMIT 10''',
+                 (f'%{phone_clean[-10:]}%',))
+        db_results = c.fetchall()
+        
+        for row in db_results:
+            results.append({
+                'source': 'Facebook Leak 2021',
+                'phone': row[1],
+                'facebook_id': row[2],
+                'name': f"{row[3]} {row[4]}",
+                'gender': row[5],
+                'birth_date': row[6],
+                'city': row[7],
+                'country': row[8],
+                'company': row[9]
+            })
         
         if LEAKCHECK_API_KEY:
-            session = self._get_session()
             try:
                 params = {'key': LEAKCHECK_API_KEY, 'type': 'phone', 'query': phone_clean}
-                response = session.get(
+                response = self.session.get(
                     'https://leakcheck.io/api/public',
                     params=params, timeout=15
                 )
@@ -906,8 +727,6 @@ class LeakSearchAPI:
                             })
             except Exception as e:
                 logger.error(f"LeakCheck error: {e}")
-            finally:
-                session.close()
         
         return {'found': len(results) > 0, 'results': results, 'count': len(results)}
     
@@ -917,14 +736,13 @@ class LeakSearchAPI:
         breach_results = []
         
         # ============ API WHATSMYNAME (GRATIS, SENZA KEY) ============
-        session = self._get_session()
         try:
             whatsmyname_url = f"{WHATSMYNAME_API_URL}/identities/{quote_plus(username)}"
-            response = session.get(whatsmyname_url, timeout=10)
+            response = self.session.get(whatsmyname_url, timeout=10)
             if response.status_code == 200:
                 data = response.json()
                 if data.get('sites'):
-                    for site in data['sites'][:20]:
+                    for site in data['sites'][:20]:  # Limita a 20 siti
                         if site.get('status') == 'claimed':
                             social_results.append({
                                 'platform': f"🌐 {site.get('name', 'Unknown')}",
@@ -935,18 +753,15 @@ class LeakSearchAPI:
                             })
         except Exception as e:
             logger.error(f"Whatsmyname API error: {e}")
-        finally:
-            session.close()
         
         # ============ API INSTANTUSERNAME (GRATIS) ============
-        session = self._get_session()
         try:
             instant_url = f"{INSTANTUSERNAME_API}/check/{quote_plus(username)}"
-            response = session.get(instant_url, timeout=5)
+            response = self.session.get(instant_url, timeout=5)
             if response.status_code == 200:
                 data = response.json()
                 for platform, info in data.get('services', {}).items():
-                    if info.get('available') == False:
+                    if info.get('available') == False:  # False = username TAKEN
                         social_results.append({
                             'platform': f"📱 {platform}",
                             'url': f"https://{platform}.com/{username}",
@@ -956,12 +771,9 @@ class LeakSearchAPI:
                         })
         except Exception as e:
             logger.error(f"InstantUsername error: {e}")
-        finally:
-            session.close()
         
         # ============ API NAMEAPI (SE C'È API KEY) ============
         if NAMEAPI_KEY:
-            session = self._get_session()
             try:
                 nameapi_url = f"https://api.nameapi.org/rest/v5.3/username/search"
                 params = {
@@ -969,7 +781,7 @@ class LeakSearchAPI:
                     'username': username,
                     'context': 'social'
                 }
-                response = session.get(nameapi_url, params=params, timeout=10)
+                response = self.session.get(nameapi_url, params=params, timeout=10)
                 if response.status_code == 200:
                     data = response.json()
                     if data.get('matches'):
@@ -984,12 +796,9 @@ class LeakSearchAPI:
                                 })
             except Exception as e:
                 logger.error(f"NameAPI error: {e}")
-            finally:
-                session.close()
         
         # ============ API SOCIAL-SEARCHER (SE C'È API KEY) ============
         if SOCIAL_SEARCHER_KEY:
-            session = self._get_session()
             try:
                 social_url = "https://api.social-searcher.com/v2/search"
                 params = {
@@ -999,7 +808,7 @@ class LeakSearchAPI:
                     'key': SOCIAL_SEARCHER_KEY,
                     'limit': 15
                 }
-                response = session.get(social_url, params=params, timeout=10)
+                response = self.session.get(social_url, params=params, timeout=10)
                 if response.status_code == 200:
                     data = response.json()
                     if data.get('posts'):
@@ -1018,8 +827,6 @@ class LeakSearchAPI:
                                     })
             except Exception as e:
                 logger.error(f"Social-Searcher error: {e}")
-            finally:
-                session.close()
         
         # ============ CONTROLLI MANUALI (BACKUP) ============
         social_platforms = [
@@ -1035,6 +842,7 @@ class LeakSearchAPI:
             ('📌 Pinterest', f'https://pinterest.com/{username}')
         ]
         
+        # Evita duplicati: controlla se la piattaforma è già stata trovata
         existing_platforms = [r['platform'] for r in social_results]
         
         for platform, url in social_platforms:
@@ -1042,8 +850,7 @@ class LeakSearchAPI:
                 continue
                 
             try:
-                session = self._get_session()
-                response = session.get(url, timeout=3, allow_redirects=False)
+                response = self.session.get(url, timeout=3, allow_redirects=False)
                 if response.status_code in [200, 301, 302]:
                     social_results.append({
                         'platform': platform,
@@ -1052,17 +859,14 @@ class LeakSearchAPI:
                         'source': 'Direct check'
                     })
             except:
-                pass
-            finally:
-                session.close()
+                continue
         
         # ============ DATA BREACH CHECK (ESISTENTE) ============
         if DEHASHED_API_KEY:
-            session = self._get_session()
             try:
                 auth = base64.b64encode(f"{DEHASHED_EMAIL}:{DEHASHED_API_KEY}".encode()).decode()
                 headers = {'Authorization': f'Basic {auth}'}
-                response = session.get(
+                response = self.session.get(
                     f'https://api.dehashed.com/search?query={quote_plus(username)}',
                     headers=headers, timeout=15
                 )
@@ -1079,8 +883,6 @@ class LeakSearchAPI:
                             })
             except Exception as e:
                 logger.error(f"Dehashed username error: {e}")
-            finally:
-                session.close()
         
         # Rimuovi duplicati basati su URL
         unique_results = []
@@ -1109,9 +911,8 @@ class LeakSearchAPI:
         }
         
         # 1. Whatsmyname (completo)
-        session = self._get_session()
         try:
-            response = session.get(
+            response = self.session.get(
                 f"https://api.whatsmyname.app/v0/identities/{quote_plus(username)}",
                 timeout=15
             )
@@ -1120,8 +921,6 @@ class LeakSearchAPI:
                 all_results['whatsmyname'] = data.get('sites', [])
         except:
             pass
-        finally:
-            session.close()
         
         # 2. Ricerca varianti (username simili)
         username_lower = username.lower()
@@ -1136,8 +935,7 @@ class LeakSearchAPI:
         for variant in common_variants[:3]:
             try:
                 variant_url = f"https://api.whatsmyname.app/v0/identities/{quote_plus(variant)}"
-                session = self._get_session()
-                response = session.get(variant_url, timeout=5)
+                response = self.session.get(variant_url, timeout=5)
                 if response.status_code == 200:
                     data = response.json()
                     if data.get('sites'):
@@ -1147,8 +945,6 @@ class LeakSearchAPI:
                         })
             except:
                 continue
-            finally:
-                session.close()
         
         return all_results
     
@@ -1160,27 +956,23 @@ class LeakSearchAPI:
         if len(parts) >= 2:
             first_name, last_name = parts[0], parts[1]
             
-            try:
-                db_results = await db_fetchall(
-                    '''SELECT * FROM facebook_leaks WHERE 
-                    (name LIKE ? OR surname LIKE ?) LIMIT 15''',
-                    [f'%{first_name}%', f'%{last_name}%']
-                )
-                
-                for row in db_results:
-                    results.append({
-                        'source': 'Facebook Leak 2021',
-                        'phone': row[1] if len(row) > 1 else None,
-                        'facebook_id': row[2] if len(row) > 2 else None,
-                        'name': f"{row[3] if len(row) > 3 else ''} {row[4] if len(row) > 4 else ''}",
-                        'gender': row[5] if len(row) > 5 else None,
-                        'birth_date': row[6] if len(row) > 6 else None,
-                        'city': row[7] if len(row) > 7 else None,
-                        'country': row[8] if len(row) > 8 else None,
-                        'company': row[9] if len(row) > 9 else None
-                    })
-            except Exception as e:
-                logger.error(f"Turso name search error: {e}")
+            c.execute('''SELECT * FROM facebook_leaks WHERE 
+                        (name LIKE ? OR surname LIKE ?) LIMIT 15''',
+                     (f'%{first_name}%', f'%{last_name}%'))
+            db_results = c.fetchall()
+            
+            for row in db_results:
+                results.append({
+                    'source': 'Facebook Leak 2021',
+                    'phone': row[1],
+                    'facebook_id': row[2],
+                    'name': f"{row[3]} {row[4]}",
+                    'gender': row[5],
+                    'birth_date': row[6],
+                    'city': row[7],
+                    'country': row[8],
+                    'company': row[9]
+                })
         
         return {'found': len(results) > 0, 'results': results, 'count': len(results)}
     
@@ -1189,9 +981,8 @@ class LeakSearchAPI:
         info = {}
         
         if IPINFO_API_KEY:
-            session = self._get_session()
             try:
-                response = session.get(
+                response = self.session.get(
                     f'https://ipinfo.io/{ip}/json?token={IPINFO_API_KEY}',
                     timeout=10
                 )
@@ -1199,15 +990,12 @@ class LeakSearchAPI:
                     info['ipinfo'] = response.json()
             except Exception as e:
                 logger.error(f"IPInfo error: {e}")
-            finally:
-                session.close()
         
         if ABUSEIPDB_KEY:
-            session = self._get_session()
             try:
                 headers = {'Key': ABUSEIPDB_KEY}
                 params = {'ipAddress': ip, 'maxAgeInDays': 90}
-                response = session.get(
+                response = self.session.get(
                     'https://api.abuseipdb.com/api/v2/check',
                     headers=headers, params=params, timeout=10
                 )
@@ -1215,8 +1003,6 @@ class LeakSearchAPI:
                     info['abuseipdb'] = response.json().get('data', {})
             except Exception as e:
                 logger.error(f"AbuseIPDB error: {e}")
-            finally:
-                session.close()
         
         if SHODAN_API_KEY:
             try:
@@ -1238,11 +1024,10 @@ class LeakSearchAPI:
         results = []
         
         if DEHASHED_API_KEY:
-            session = self._get_session()
             try:
                 auth = base64.b64encode(f"{DEHASHED_EMAIL}:{DEHASHED_API_KEY}".encode()).decode()
                 headers = {'Authorization': f'Basic {auth}'}
-                response = session.get(
+                response = self.session.get(
                     f'https://api.dehashed.com/search?query={quote_plus(password)}',
                     headers=headers, timeout=15
                 )
@@ -1260,8 +1045,6 @@ class LeakSearchAPI:
                             })
             except Exception as e:
                 logger.error(f"Dehashed password error: {e}")
-            finally:
-                session.close()
         
         return {'found': len(results) > 0, 'results': results, 'count': len(results)}
     
@@ -1278,11 +1061,10 @@ class LeakSearchAPI:
             hash_type = "SHA256"
         
         if DEHASHED_API_KEY:
-            session = self._get_session()
             try:
                 auth = base64.b64encode(f"{DEHASHED_EMAIL}:{DEHASHED_API_KEY}".encode()).decode()
                 headers = {'Authorization': f'Basic {auth}'}
-                response = session.get(
+                response = self.session.get(
                     f'https://api.dehashed.com/search?query={quote_plus(hash_str)}',
                     headers=headers, timeout=15
                 )
@@ -1300,8 +1082,6 @@ class LeakSearchAPI:
                                 })
             except Exception as e:
                 logger.error(f"Dehashed hash error: {e}")
-            finally:
-                session.close()
         
         return {
             'hash_type': hash_type,
@@ -1322,10 +1102,9 @@ class LeakSearchAPI:
         
         query = query.strip()
         
-        session = self._get_session()
         try:
             tg_url = f'https://t.me/{query}'
-            response = session.get(tg_url, timeout=5)
+            response = self.session.get(tg_url, timeout=5)
             if response.status_code == 200 and 'tgme_page_title' in response.text:
                 results['telegram'].append({
                     'type': 'username',
@@ -1334,13 +1113,10 @@ class LeakSearchAPI:
                 })
         except:
             pass
-        finally:
-            session.close()
         
-        session = self._get_session()
         try:
             fb_url = f'https://www.facebook.com/public/{query.replace(" ", "-")}'
-            response = session.get(fb_url, timeout=5)
+            response = self.session.get(fb_url, timeout=5)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
                 profiles = soup.find_all('div', {'class': '_2ph_'})
@@ -1353,13 +1129,10 @@ class LeakSearchAPI:
                     })
         except:
             pass
-        finally:
-            session.close()
         
-        session = self._get_session()
         try:
             vk_url = f'https://vk.com/people/{query.replace(" ", "%20")}'
-            response = session.get(vk_url, timeout=5)
+            response = self.session.get(vk_url, timeout=5)
             if response.status_code == 200:
                 results['vk'].append({
                     'type': 'name',
@@ -1368,13 +1141,10 @@ class LeakSearchAPI:
                 })
         except:
             pass
-        finally:
-            session.close()
         
-        session = self._get_session()
         try:
             ig_url = f'https://www.instagram.com/{query.replace(" ", "")}/'
-            response = session.get(ig_url, timeout=5, allow_redirects=False)
+            response = self.session.get(ig_url, timeout=5, allow_redirects=False)
             if response.status_code in [200, 301, 302]:
                 results['instagram'].append({
                     'type': 'username',
@@ -1383,8 +1153,6 @@ class LeakSearchAPI:
                 })
         except:
             pass
-        finally:
-            session.close()
         
         return results
     
@@ -1396,10 +1164,9 @@ class LeakSearchAPI:
             'by_id': []
         }
         
-        session = self._get_session()
         try:
             tg_url = f'https://t.me/{query}'
-            response = session.get(tg_url, timeout=5)
+            response = self.session.get(tg_url, timeout=5)
             if response.status_code == 200 and 'tgme_page_title' in response.text:
                 results['by_username'].append({
                     'url': tg_url,
@@ -1408,8 +1175,6 @@ class LeakSearchAPI:
                 })
         except:
             pass
-        finally:
-            session.close()
         
         if query.isdigit():
             results['by_id'].append({
@@ -1432,10 +1197,9 @@ class LeakSearchAPI:
             'by_name': []
         }
         
-        session = self._get_session()
         try:
             ig_url = f'https://www.instagram.com/{query.replace(" ", "")}/'
-            response = session.get(ig_url, timeout=5, allow_redirects=False)
+            response = self.session.get(ig_url, timeout=5, allow_redirects=False)
             if response.status_code in [200, 301, 302]:
                 results['by_username'].append({
                     'url': ig_url,
@@ -1444,8 +1208,6 @@ class LeakSearchAPI:
                 })
         except:
             pass
-        finally:
-            session.close()
         
         if ' ' in query:
             results['by_name'].append({
@@ -1463,10 +1225,9 @@ class LeakSearchAPI:
             'by_id': []
         }
         
-        session = self._get_session()
         try:
             fb_url = f'https://www.facebook.com/public/{query.replace(" ", "-")}'
-            response = session.get(fb_url, timeout=5)
+            response = self.session.get(fb_url, timeout=5)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
                 profiles = soup.find_all('div', {'class': '_2ph_'})
@@ -1479,14 +1240,11 @@ class LeakSearchAPI:
                     })
         except:
             pass
-        finally:
-            session.close()
         
         if query.isdigit():
-            session = self._get_session()
             try:
                 fb_url = f'https://www.facebook.com/profile.php?id={query}'
-                response = session.get(fb_url, timeout=5, allow_redirects=False)
+                response = self.session.get(fb_url, timeout=5, allow_redirects=False)
                 if response.status_code == 200:
                     results['by_id'].append({
                         'url': fb_url,
@@ -1496,8 +1254,6 @@ class LeakSearchAPI:
                     })
             except:
                 pass
-            finally:
-                session.close()
         
         return results
     
@@ -1508,10 +1264,9 @@ class LeakSearchAPI:
             'by_id': []
         }
         
-        session = self._get_session()
         try:
             vk_url = f'https://vk.com/people/{query.replace(" ", "%20")}'
-            response = session.get(vk_url, timeout=5)
+            response = self.session.get(vk_url, timeout=5)
             if response.status_code == 200:
                 results['by_name'].append({
                     'url': vk_url,
@@ -1520,14 +1275,11 @@ class LeakSearchAPI:
                 })
         except:
             pass
-        finally:
-            session.close()
         
         if query.isdigit():
-            session = self._get_session()
             try:
                 vk_url = f'https://vk.com/id{query}'
-                response = session.get(vk_url, timeout=5, allow_redirects=False)
+                response = self.session.get(vk_url, timeout=5, allow_redirects=False)
                 if response.status_code == 200:
                     results['by_id'].append({
                         'url': vk_url,
@@ -1537,8 +1289,6 @@ class LeakSearchAPI:
                     })
             except:
                 pass
-            finally:
-                session.close()
         
         return results
     
@@ -1551,32 +1301,27 @@ class LeakSearchAPI:
             'search_engines': []
         }
         
-        try:
-            db_results = await db_fetchall(
-                '''SELECT * FROM facebook_leaks WHERE 
-                name LIKE ? OR surname LIKE ? OR phone LIKE ? 
-                ORDER BY found_date DESC LIMIT 10''',
-                [f'%{query}%', f'%{query}%', f'%{query}%']
-            )
-            
-            for row in db_results:
-                results['leak_data'].append({
-                    'type': 'facebook_leak_2021',
-                    'phone': row[1] if len(row) > 1 else None,
-                    'facebook_id': row[2] if len(row) > 2 else None,
-                    'full_name': f"{row[3] if len(row) > 3 else ''} {row[4] if len(row) > 4 else ''}",
-                    'gender': row[5] if len(row) > 5 else None,
-                    'birth_date': row[6] if len(row) > 6 else None,
-                    'city': row[7] if len(row) > 7 else None,
-                    'country': row[8] if len(row) > 8 else None,
-                    'company': row[9] if len(row) > 9 else None,
-                    'leak_date': row[11] if len(row) > 11 else None
-                })
-        except Exception as e:
-            logger.error(f"Turso facebook advanced search error: {e}")
+        c.execute('''SELECT * FROM facebook_leaks WHERE 
+                    name LIKE ? OR surname LIKE ? OR phone LIKE ? 
+                    ORDER BY found_date DESC LIMIT 10''',
+                 (f'%{query}%', f'%{query}%', f'%{query}%'))
+        db_results = c.fetchall()
+        
+        for row in db_results:
+            results['leak_data'].append({
+                'type': 'facebook_leak_2021',
+                'phone': row[1],
+                'facebook_id': row[2],
+                'full_name': f"{row[3]} {row[4]}",
+                'gender': row[5],
+                'birth_date': row[6],
+                'city': row[7],
+                'country': row[8],
+                'company': row[9],
+                'leak_date': row[11]
+            })
         
         if FACEBOOK_GRAPH_API_KEY and ' ' in query:
-            session = self._get_session()
             try:
                 parts = query.split()
                 if len(parts) >= 2:
@@ -1591,7 +1336,7 @@ class LeakSearchAPI:
                         'limit': 5
                     }
                     
-                    response = session.get(search_url, params=params, timeout=10)
+                    response = self.session.get(search_url, params=params, timeout=10)
                     if response.status_code == 200:
                         data = response.json()
                         if data.get('data'):
@@ -1606,16 +1351,13 @@ class LeakSearchAPI:
                                 })
             except Exception as e:
                 logger.error(f"Facebook Graph API error: {e}")
-            finally:
-                session.close()
         
-        session = self._get_session()
         try:
             bing_url = f'https://www.bing.com/search?q=site%3Afacebook.com+{quote_plus(query)}'
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
-            response = session.get(bing_url, headers=headers, timeout=10)
+            response = self.session.get(bing_url, headers=headers, timeout=10)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
                 links = soup.find_all('a', href=True)
@@ -1630,15 +1372,12 @@ class LeakSearchAPI:
                         })
         except Exception as e:
             logger.error(f"Search engine error: {e}")
-        finally:
-            session.close()
         
         if DEHASHED_API_KEY:
-            session = self._get_session()
             try:
                 auth = base64.b64encode(f"{DEHASHED_EMAIL}:{DEHASHED_API_KEY}".encode()).decode()
                 headers = {'Authorization': f'Basic {auth}'}
-                response = session.get(
+                response = self.session.get(
                     f'https://api.dehashed.com/search?query={quote_plus("facebook.com")}+{quote_plus(query)}',
                     headers=headers, timeout=15
                 )
@@ -1658,8 +1397,6 @@ class LeakSearchAPI:
                                 })
             except Exception as e:
                 logger.error(f"Dehashed Facebook error: {e}")
-            finally:
-                session.close()
         
         return results
     
@@ -1668,35 +1405,30 @@ class LeakSearchAPI:
         results = []
         phone_clean = re.sub(r'[^\d+]', '', phone)[-10:]
         
-        try:
-            db_results = await db_fetchall(
-                '''SELECT * FROM facebook_leaks WHERE phone LIKE ? ORDER BY found_date DESC LIMIT 15''',
-                [f'%{phone_clean}%']
-            )
-            
-            for row in db_results:
-                results.append({
-                    'source': 'Facebook Leak 2021',
-                    'phone': row[1] if len(row) > 1 else None,
-                    'facebook_id': row[2] if len(row) > 2 else None,
-                    'name': f"{row[3] if len(row) > 3 else ''} {row[4] if len(row) > 4 else ''}",
-                    'gender': row[5] if len(row) > 5 else None,
-                    'birth_date': row[6] if len(row) > 6 else None,
-                    'city': row[7] if len(row) > 7 else None,
-                    'country': row[8] if len(row) > 8 else None,
-                    'company': row[9] if len(row) > 9 else None,
-                    'relationship_status': row[10] if len(row) > 10 else None,
-                    'leak_date': row[11] if len(row) > 11 else None
-                })
-        except Exception as e:
-            logger.error(f"Turso facebook phone search error: {e}")
+        c.execute('''SELECT * FROM facebook_leaks WHERE phone LIKE ? ORDER BY found_date DESC LIMIT 15''',
+                 (f'%{phone_clean}%',))
+        db_results = c.fetchall()
+        
+        for row in db_results:
+            results.append({
+                'source': 'Facebook Leak 2021',
+                'phone': row[1],
+                'facebook_id': row[2],
+                'name': f"{row[3]} {row[4]}",
+                'gender': row[5],
+                'birth_date': row[6],
+                'city': row[7],
+                'country': row[8],
+                'company': row[9],
+                'relationship_status': row[10],
+                'leak_date': row[11]
+            })
         
         if SNUSBASE_API_KEY:
-            session = self._get_session()
             try:
                 headers = {'Auth': SNUSBASE_API_KEY}
                 data = {'terms': [phone_clean], 'types': ['phone']}
-                response = session.post(
+                response = self.session.post(
                     'https://api.snusbase.com/v3/search',
                     headers=headers, json=data, timeout=20
                 )
@@ -1714,8 +1446,6 @@ class LeakSearchAPI:
                                 })
             except Exception as e:
                 logger.error(f"Snusbase phone error: {e}")
-            finally:
-                session.close()
         
         return {'found': len(results) > 0, 'results': results, 'count': len(results)}
     
@@ -1725,11 +1455,10 @@ class LeakSearchAPI:
         facebook_email = email.lower()
         
         if DEHASHED_API_KEY:
-            session = self._get_session()
             try:
                 auth = base64.b64encode(f"{DEHASHED_EMAIL}:{DEHASHED_API_KEY}".encode()).decode()
                 headers = {'Authorization': f'Basic {auth}'}
-                response = session.get(
+                response = self.session.get(
                     f'https://api.dehashed.com/search?query={quote_plus(facebook_email)}+facebook',
                     headers=headers, timeout=15
                 )
@@ -1748,15 +1477,12 @@ class LeakSearchAPI:
                             })
             except Exception as e:
                 logger.error(f"Dehashed Facebook email error: {e}")
-            finally:
-                session.close()
         
         if SNUSBASE_API_KEY:
-            session = self._get_session()
             try:
                 headers = {'Auth': SNUSBASE_API_KEY}
                 data = {'terms': [email], 'types': ['email']}
-                response = session.post(
+                response = self.session.post(
                     'https://api.snusbase.com/v3/search',
                     headers=headers, json=data, timeout=20
                 )
@@ -1773,8 +1499,6 @@ class LeakSearchAPI:
                                 })
             except Exception as e:
                 logger.error(f"Snusbase Facebook email error: {e}")
-            finally:
-                session.close()
         
         return {'found': len(results) > 0, 'results': results, 'count': len(results)}
     
@@ -1783,30 +1507,24 @@ class LeakSearchAPI:
         results = []
         
         if fb_id.isdigit():
-            try:
-                db_results = await db_fetchall(
-                    '''SELECT * FROM facebook_leaks WHERE facebook_id = ?''', 
-                    [fb_id]
-                )
-                
-                for row in db_results:
-                    results.append({
-                        'source': 'Facebook Leak 2021',
-                        'facebook_id': row[2] if len(row) > 2 else None,
-                        'name': f"{row[3] if len(row) > 3 else ''} {row[4] if len(row) > 4 else ''}",
-                        'phone': row[1] if len(row) > 1 else None,
-                        'gender': row[5] if len(row) > 5 else None,
-                        'birth_date': row[6] if len(row) > 6 else None,
-                        'city': row[7] if len(row) > 7 else None,
-                        'country': row[8] if len(row) > 8 else None
-                    })
-            except Exception as e:
-                logger.error(f"Turso facebook id search error: {e}")
+            c.execute('''SELECT * FROM facebook_leaks WHERE facebook_id = ?''', (fb_id,))
+            db_results = c.fetchall()
             
-            session = self._get_session()
+            for row in db_results:
+                results.append({
+                    'source': 'Facebook Leak 2021',
+                    'facebook_id': row[2],
+                    'name': f"{row[3]} {row[4]}",
+                    'phone': row[1],
+                    'gender': row[5],
+                    'birth_date': row[6],
+                    'city': row[7],
+                    'country': row[8]
+                })
+            
             try:
                 profile_url = f'https://facebook.com/{fb_id}'
-                response = session.get(profile_url, timeout=10, allow_redirects=True)
+                response = self.session.get(profile_url, timeout=10, allow_redirects=True)
                 
                 if response.status_code == 200:
                     soup = BeautifulSoup(response.text, 'html.parser')
@@ -1822,8 +1540,6 @@ class LeakSearchAPI:
                         })
             except Exception as e:
                 logger.error(f"Facebook ID profile error: {e}")
-            finally:
-                session.close()
         
         return {'found': len(results) > 0, 'results': results, 'count': len(results)}
 
@@ -1833,25 +1549,21 @@ class LeakosintBot:
     def __init__(self):
         self.api = LeakSearchAPI()
     
-    async def get_user_language(self, user_id: int) -> str:
-        result = await db_fetchone(
-            'SELECT language FROM users WHERE user_id = ?', 
-            [user_id]
-        )
-        return result[0] if result and result[0] else 'en'
+    def get_user_language(self, user_id: int) -> str:
+        c.execute('SELECT language FROM users WHERE user_id = ?', (user_id,))
+        result = c.fetchone()
+        return result[0] if result and result[0] else 'en'  # Default a 'en'
     
-    async def set_user_language(self, user_id: int, language: str):
-        await db_execute(
-            'UPDATE users SET language = ? WHERE user_id = ?', 
-            [language, user_id]
-        )
+    def set_user_language(self, user_id: int, language: str):
+        c.execute('UPDATE users SET language = ? WHERE user_id = ?', (language, user_id))
+        conn.commit()
     
     async def show_main_menu(self, update: Update, context: CallbackContext):
         """Mostra il menu principale con interfaccia"""
         user = update.effective_user
         user_id = user.id
         
-        await self.register_user(user_id, user.username)
+        self.register_user(user_id, user.username)
         
         now = datetime.now()
         mesi = {
@@ -1861,7 +1573,7 @@ class LeakosintBot:
         }
         data_italiana = f"{now.day} {mesi.get(now.month, 'novembre')}"
         
-        user_lang = await self.get_user_language(user_id)
+        user_lang = self.get_user_language(user_id)
         
         keyboard = [
             [InlineKeyboardButton(translations[user_lang]['search'], callback_data='ricerca')],
@@ -1881,65 +1593,29 @@ class LeakosintBot:
         else:
             await update.message.reply_text(menu_text, reply_markup=reply_markup)
     
-    async def register_user(self, user_id: int, username: str):
-        """Registra un nuovo utente con 4 crediti iniziali"""
-        result = await db_fetchone(
-            'SELECT * FROM users WHERE user_id = ?', 
-            [user_id]
-        )
-        if not result:
-            try:
-                await db_execute(
-                    '''INSERT INTO users (user_id, username, balance) 
-                    VALUES (?, ?, 4)''', 
-                    [user_id, username]
-                )
-                logger.info(f"✅ New user registered: {user_id} (@{username}) with 4 credits")
-                return True
-            except Exception as e:
-                logger.error(f"Error registering user: {e}")
-                # Prova alternativa se il primo fallisce
-                try:
-                    await db_execute(
-                        '''INSERT OR IGNORE INTO users (user_id, username, balance) 
-                        VALUES (?, ?, 4)''', 
-                        [user_id, username]
-                    )
-                    return True
-                except Exception as e2:
-                    logger.error(f"Alternative registration also failed: {e2}")
-                    return False
-        else:
-            # Utente già esiste, controlla se ha crediti
-            current_balance = await self.get_user_balance(user_id)
-            if current_balance == 0:
-                # Aggiungi 4 crediti se l'utente ha 0 crediti
-                await db_execute(
-                    '''UPDATE users SET balance = 4 WHERE user_id = ?''',
-                    [user_id]
-                )
-                logger.info(f"✅ User {user_id} had 0 credits, reset to 4")
-            return False
+    def register_user(self, user_id: int, username: str):
+        """Registra un nuovo utente"""
+        c.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
+        if not c.fetchone():
+            c.execute('''INSERT INTO users (user_id, username, balance) 
+                       VALUES (?, ?, 4)''', (user_id, username))
+            conn.commit()
+            return True
+        return False
     
-    async def get_user_balance(self, user_id: int) -> int:
-        result = await db_fetchone(
-            'SELECT balance FROM users WHERE user_id = ?', 
-            [user_id]
-        )
+    def get_user_balance(self, user_id: int) -> int:
+        c.execute('SELECT balance FROM users WHERE user_id = ?', (user_id,))
+        result = c.fetchone()
         return int(result[0]) if result else 0
     
-    async def get_user_searches(self, user_id: int) -> int:
-        result = await db_fetchone(
-            'SELECT searches FROM users WHERE user_id = ?', 
-            [user_id]
-        )
+    def get_user_searches(self, user_id: int) -> int:
+        c.execute('SELECT searches FROM users WHERE user_id = ?', (user_id,))
+        result = c.fetchone()
         return result[0] if result else 0
     
-    async def get_registration_date(self, user_id: int) -> str:
-        result = await db_fetchone(
-            'SELECT registration_date FROM users WHERE user_id = ?', 
-            [user_id]
-        )
+    def get_registration_date(self, user_id: int) -> str:
+        c.execute('SELECT registration_date FROM users WHERE user_id = ?', (user_id,))
+        result = c.fetchone()
         if result and result[0]:
             try:
                 dt = datetime.strptime(result[0], '%Y-%m-%d %H:%M:%S')
@@ -1948,91 +1624,53 @@ class LeakosintBot:
                 return result[0]
         return "Sconosciuta"
     
-    async def get_last_active(self, user_id: int) -> str:
-        result = await db_fetchone(
-            'SELECT last_active FROM users WHERE user_id = ?', 
-            [user_id]
-        )
+    def get_last_active(self, user_id: int) -> str:
+        c.execute('SELECT last_active FROM users WHERE user_id = ?', (user_id,))
+        result = c.fetchone()
         if result and result[0]:
             try:
-                dt = datetime.strptime(result[0], '%Y-%m-%d %H:%M:%S')
+                dt = datetime.strptime(result[0], '%Y-%m-d %H:%M:%S')
                 return dt.strftime('%d/%m/%Y %H:%M')
             except:
                 return result[0]
         return "Sconosciuta"
     
-    async def get_subscription_type(self, user_id: int) -> str:
-        result = await db_fetchone(
-            'SELECT subscription_type FROM users WHERE user_id = ?', 
-            [user_id]
-        )
+    def get_subscription_type(self, user_id: int) -> str:
+        c.execute('SELECT subscription_type FROM users WHERE user_id = ?', (user_id,))
+        result = c.fetchone()
         return result[0] if result else 'free'
     
-    async def get_username(self, user_id: int) -> str:
-        result = await db_fetchone(
-            'SELECT username FROM users WHERE user_id = ?', 
-            [user_id]
-        )
+    def get_username(self, user_id: int) -> str:
+        c.execute('SELECT username FROM users WHERE user_id = ?', (user_id,))
+        result = c.fetchone()
         return result[0] if result else 'N/A'
     
     async def update_balance(self, user_id: int, cost: int = 2) -> bool:
-        current = await self.get_user_balance(user_id)
+        current = self.get_user_balance(user_id)
         if current >= cost:
             new_balance = current - cost
-            try:
-                await db_execute(
-                    '''UPDATE users SET balance = ?, searches = searches + 1, 
-                    last_active = CURRENT_TIMESTAMP WHERE user_id = ?''', 
-                    [new_balance, user_id]
-                )
-                return True
-            except Exception as e:
-                logger.error(f"Error updating balance: {e}")
-                return False
+            c.execute('''UPDATE users SET balance = ?, searches = searches + 1, 
+                       last_active = CURRENT_TIMESTAMP WHERE user_id = ?''', 
+                      (new_balance, user_id))
+            conn.commit()
+            return True
         return False
     
-    async def add_credits(self, user_id: int, amount: int) -> bool:
+    def add_credits(self, user_id: int, amount: int) -> bool:
         try:
-            # Prima controlla se l'utente esiste
-            user_check = await db_fetchone('SELECT user_id FROM users WHERE user_id = ?', [user_id])
-            if not user_check:
-                # Crea l'utente se non esiste
-                await db_execute(
-                    '''INSERT INTO users (user_id, username, balance) 
-                    VALUES (?, ?, ?)''', 
-                    [user_id, 'admin_added', amount]
-                )
-                logger.info(f"✅ Created user {user_id} with {amount} credits")
-                return True
-            
-            # Altrimenti aggiungi crediti all'utente esistente
-            await db_execute(
-                '''UPDATE users SET balance = balance + ?, 
-                last_active = CURRENT_TIMESTAMP WHERE user_id = ?''', 
-                [amount, user_id]
-            )
-            logger.info(f"✅ Added {amount} credits to user {user_id}")
+            c.execute('''UPDATE users SET balance = balance + ?, 
+                       last_active = CURRENT_TIMESTAMP WHERE user_id = ?''', 
+                      (amount, user_id))
+            conn.commit()
             return True
         except Exception as e:
             logger.error(f"Error adding credits: {e}")
-            # Prova alternativa
-            try:
-                await db_execute(
-                    '''INSERT OR REPLACE INTO users (user_id, username, balance) 
-                    VALUES (?, ?, COALESCE((SELECT balance FROM users WHERE user_id = ?), 0) + ?)''', 
-                    [user_id, 'admin_added', user_id, amount]
-                )
-                return True
-            except Exception as e2:
-                logger.error(f"Alternative add credits also failed: {e2}")
-                return False
+            return False
     
-    async def log_search(self, user_id: int, query: str, search_type: str, results: str):
-        await db_execute(
-            '''INSERT INTO searches (user_id, query, type, results) 
-            VALUES (?, ?, ?, ?)''', 
-            [user_id, query, search_type, results]
-        )
+    def log_search(self, user_id: int, query: str, search_type: str, results: str):
+        c.execute('''INSERT INTO searches (user_id, query, type, results) 
+                   VALUES (?, ?, ?, ?)''', (user_id, query, search_type, results))
+        conn.commit()
     
     async def handle_button_callback(self, update: Update, context: CallbackContext):
         """Gestisce i callback dei pulsanti inline"""
@@ -2094,13 +1732,13 @@ class LeakosintBot:
         query = update.callback_query
         user_id = query.from_user.id
         
-        balance = await self.get_user_balance(user_id)
-        searches = await self.get_user_searches(user_id)
-        reg_date = await self.get_registration_date(user_id)
-        last_active = await self.get_last_active(user_id)
-        sub_type = await self.get_subscription_type(user_id)
-        username = await self.get_username(user_id)
-        user_lang = await self.get_user_language(user_id)
+        balance = self.get_user_balance(user_id)
+        searches = self.get_user_searches(user_id)
+        reg_date = self.get_registration_date(user_id)
+        last_active = self.get_last_active(user_id)
+        sub_type = self.get_subscription_type(user_id)
+        username = self.get_username(user_id)
+        user_lang = self.get_user_language(user_id)
         
         now = datetime.now()
         mesi = {
@@ -2148,7 +1786,7 @@ class LeakosintBot:
     async def show_language_settings(self, update: Update, context: CallbackContext):
         """Mostra le impostazioni della lingua"""
         user_id = update.effective_user.id
-        current_lang = await self.get_user_language(user_id)
+        current_lang = self.get_user_language(user_id)
         
         keyboard = [
             [
@@ -2182,7 +1820,7 @@ Il cambio lingua influenzerà:
         await query.answer()
         
         user_id = query.from_user.id
-        await self.set_user_language(user_id, language)
+        self.set_user_language(user_id, language)
         
         # Usa il dizionario di traduzioni per il messaggio
         lang_name = translations[language]['language']
@@ -2202,7 +1840,7 @@ Il cambio lingua influenzerà:
         """Mostra il menu di ricerca tradotto"""
         user = update.effective_user
         user_id = user.id
-        user_lang = await self.get_user_language(user_id)
+        user_lang = self.get_user_language(user_id)
         
         now = datetime.now()
         mesi = {
@@ -2211,9 +1849,6 @@ Il cambio lingua influenzerà:
             9: 'settembre', 10: 'ottobre', 11: 'novembre', 12: 'dicembre'
         }
         data_italiana = f"{now.day} {mesi.get(now.month, 'novembre')}"
-        
-        balance = await self.get_user_balance(user_id)
-        searches = await self.get_user_searches(user_id)
         
         if user_lang == 'it':
             text = f"""{translations[user_lang]['search_menu_title']}
@@ -2302,7 +1937,7 @@ Il cambio lingua influenzerà:
 · AA1234567 Via Roma 123
 · Mario Rossi 123456789 Milano
 
-💰 Crediti disponibili: {balance} 📊Ricerche effettuate: {searches}
+💰 Crediti disponibili: {self.get_user_balance(user_id)} 📊Ricerche effettuate: {self.get_user_searches(user_id)}
 
 📩 Inviami qualsiasi dato per iniziare la ricerca.
 
@@ -2396,7 +2031,7 @@ Il cambio lingua influenzerà:
 · AA1234567 Via Roma 123
 · Mario Rossi 123456789 Milano
 
-💰 Available credits: {balance} 📊Searches performed: {searches}
+💰 Available credits: {self.get_user_balance(user_id)} 📊Searches performed: {self.get_user_searches(user_id)}
 
 📩 Send me any data to start searching.
 
@@ -2411,10 +2046,11 @@ Il cambio lingua influenzerà:
         else:
             await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
+
     async def show_shop_interface(self, update: Update, context: CallbackContext):
         """Mostra l'interfaccia di acquisto crediti con prezzi interi"""
         user_id = update.effective_user.id
-        user_lang = await self.get_user_language(user_id)
+        user_lang = self.get_user_language(user_id)
         
         now = datetime.now()
         mesi = {
@@ -2736,7 +2372,7 @@ https://www.paypal.me/BotAi36
             return
         
         if not await self.update_balance(user_id, 2):
-            user_lang = await self.get_user_language(user_id)
+            user_lang = self.get_user_language(user_id)
             await update.message.reply_text(
                 translations[user_lang]['insufficient_credits']
             )
@@ -2750,7 +2386,7 @@ https://www.paypal.me/BotAi36
         now = datetime.now()
         data_italiana = f"{now.day} {mesi.get(now.month, 'novembre')}"
         
-        user_lang = await self.get_user_language(user_id)
+        user_lang = self.get_user_language(user_id)
         wait_text = f"""{translations[user_lang]['processing']}
 ⏰ {now.hour:02d}:{now.minute:02d}
 
@@ -2795,7 +2431,7 @@ https://www.paypal.me/BotAi36
             
         except Exception as e:
             logger.error(f"Search error: {e}")
-            user_lang = await self.get_user_language(user_id)
+            user_lang = self.get_user_language(user_id)
             error_text = f"""{translations[user_lang]['error']}
 Query: {query}
 Errore: {str(e)[:100]}
@@ -2868,7 +2504,7 @@ Errore: {str(e)[:100]}
                 if social_results['social_count'] > 0:
                     result_text += f"\n     ✅ {social_results['social_count']} account social"
             
-            for social in social_results['social'][:3]:
+            for social in social_results['social']:
                 platform = social['platform']
                 url = social['url']
                 result_text += f"\n     - {platform}: {url}"
@@ -2968,49 +2604,34 @@ Errore: {str(e)[:100]}
             if components['emails'] and components['phones']:
                 for email in components['emails'][:1]:
                     for phone in components['phones'][:1]:
-                        try:
-                            count_result = await db_fetchone(
-                                '''SELECT COUNT(*) FROM breach_data WHERE 
-                                (email = ? OR phone = ?) AND 
-                                (email = ? OR phone = ?)''',
-                                [email, email, phone, phone]
-                            )
-                            count = count_result[0] if count_result else 0
-                            if count > 0:
-                                correlations.append(f"📧 {email} ↔ 📱 {phone}")
-                        except:
-                            pass
+                        c.execute('''SELECT COUNT(*) FROM breach_data WHERE 
+                                    (email = ? OR phone = ?) AND 
+                                    (email = ? OR phone = ?)''',
+                                 (email, email, phone, phone))
+                        count = c.fetchone()[0]
+                        if count > 0:
+                            correlations.append(f"📧 {email} ↔ 📱 {phone}")
             
             if components['names'] and components['phones']:
                 for name in components['names'][:1]:
                     for phone in components['phones'][:1]:
                         phone_clean = re.sub(r'[^\d+]', '', phone)[-10:]
-                        try:
-                            count_result = await db_fetchone(
-                                '''SELECT COUNT(*) FROM facebook_leaks WHERE 
-                                phone LIKE ? AND (name LIKE ? OR surname LIKE ?)''',
-                                [f'%{phone_clean}%', f'%{name[:5]}%', f'%{name[:5]}%']
-                            )
-                            count = count_result[0] if count_result else 0
-                            if count > 0:
-                                correlations.append(f"👤 {name[:15]}... ↔ 📱 {phone}")
-                        except:
-                            pass
+                        c.execute('''SELECT COUNT(*) FROM facebook_leaks WHERE 
+                                    phone LIKE ? AND (name LIKE ? OR surname LIKE ?)''',
+                                 (f'%{phone_clean}%', f'%{name[:5]}%', f'%{name[:5]}%'))
+                        count = c.fetchone()[0]
+                        if count > 0:
+                            correlations.append(f"👤 {name[:15]}... ↔ 📱 {phone}")
             
             if components['documents'] and components['names']:
                 for doc in components['documents'][:1]:
                     for name in components['names'][:1]:
-                        try:
-                            count_result = await db_fetchone(
-                                '''SELECT COUNT(*) FROM addresses_documents WHERE 
-                                document_number LIKE ? AND full_name LIKE ?''',
-                                [f'%{doc}%', f'%{name}%']
-                            )
-                            count = count_result[0] if count_result else 0
-                            if count > 0:
-                                correlations.append(f"📄 {doc} ↔ 👤 {name[:15]}...")
-                        except:
-                            pass
+                        c.execute('''SELECT COUNT(*) FROM addresses_documents WHERE 
+                                    document_number LIKE ? AND full_name LIKE ?''',
+                                 (f'%{doc}%', f'%{name}%'))
+                        count = c.fetchone()[0]
+                        if count > 0:
+                            correlations.append(f"📄 {doc} ↔ 👤 {name[:15]}...")
             
             if correlations:
                 for corr in correlations[:3]:
@@ -3018,10 +2639,9 @@ Errore: {str(e)[:100]}
             else:
                 result_text += f"\n  - Nessuna correlazione diretta trovata"
         
-        user_lang = await self.get_user_language(user_id)
+        user_lang = self.get_user_language(user_id)
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
-        balance = await self.get_user_balance(user_id)
-        result_text += f"\n{translations[user_lang]['balance']} {balance}"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n\n{data_italiana}"
         
@@ -3042,7 +2662,7 @@ Errore: {str(e)[:100]}
 - {email} - Cerca la posta"""
         
         if search_results['found']:
-            user_lang = await self.get_user_language(user_id)
+            user_lang = self.get_user_language(user_id)
             result_text += f"\n\n✅ RISULTATI TROVATI: {search_results['count']}"
             
             sources = {}
@@ -3066,14 +2686,13 @@ Errore: {str(e)[:100]}
                         result_text += f"\n    📅 Data: {entry.get('date', 'Unknown')}"
         
         else:
-            user_lang = await self.get_user_language(user_id)
+            user_lang = self.get_user_language(user_id)
             result_text += f"\n\n{translations[user_lang]['no_results']}"
             result_text += f"\n📭 L'email non è stata trovata nei database conosciuti."
         
-        user_lang = await self.get_user_language(user_id)
+        user_lang = self.get_user_language(user_id)
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
-        balance = await self.get_user_balance(user_id)
-        result_text += f"\n{translations[user_lang]['balance']} {balance}"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n\n{data_italiana}"
         
@@ -3144,14 +2763,13 @@ Errore: {str(e)[:100]}
                         result_text += f"\n    👤 Nome: {result['name']}"
         
         else:
-            user_lang = await self.get_user_language(user_id)
+            user_lang = self.get_user_language(user_id)
             result_text += f"\n\n{translations[user_lang]['no_results']}"
             result_text += f"\n📵 Il numero non è stato trovato."
         
-        user_lang = await self.get_user_language(user_id)
+        user_lang = self.get_user_language(user_id)
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
-        balance = await self.get_user_balance(user_id)
-        result_text += f"\n{translations[user_lang]['balance']} {balance}"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n\n{data_italiana}"
         
@@ -3193,14 +2811,13 @@ Errore: {str(e)[:100]}
                 result_text += f"\n  - {platform}: {social['url']}"
         
         if not search_results['found'] and social_results['social_count'] == 0:
-            user_lang = await self.get_user_language(user_id)
+            user_lang = self.get_user_language(user_id)
             result_text += f"\n\n{translations[user_lang]['no_results']}"
             result_text += f"\n👤 Il nome non è stato trovato."
         
-        user_lang = await self.get_user_language(user_id)
+        user_lang = self.get_user_language(user_id)
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
-        balance = await self.get_user_balance(user_id)
-        result_text += f"\n{translations[user_lang]['balance']} {balance}"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n\n{data_italiana}"
         
@@ -3232,7 +2849,7 @@ Errore: {str(e)[:100]}
             
             # Raggruppa per piattaforma principale
             platforms = {}
-            for social in search_results['social'][:15]:
+            for social in search_results['social'][:15]:  # Limita a 15
                 platform = social['platform']
                 if platform not in platforms:
                     platforms[platform] = []
@@ -3262,7 +2879,7 @@ Errore: {str(e)[:100]}
                     result_text += f"\n    🔐 Password: {breach['password'][:15]}..."
         
         if search_results['social_count'] == 0 and search_results['breach_count'] == 0:
-            user_lang = await self.get_user_language(user_id)
+            user_lang = self.get_user_language(user_id)
             result_text += f"\n\n{translations[user_lang]['no_results']}"
             result_text += f"\n👤 Username non trovato su nessuna piattaforma conosciuta."
             result_text += f"\n\n💡 PROVA CON:"
@@ -3270,10 +2887,9 @@ Errore: {str(e)[:100]}
             result_text += f"\n  · Nome completo: se contiene spazi"
             result_text += f"\n  · Email: se è un indirizzo email"
         
-        user_lang = await self.get_user_language(user_id)
+        user_lang = self.get_user_language(user_id)
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
-        balance = await self.get_user_balance(user_id)
-        result_text += f"\n{translations[user_lang]['balance']} {balance}"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n\n{data_italiana}"
         
@@ -3314,10 +2930,9 @@ Errore: {str(e)[:100]}
                 ports = shodan_info['ports'][:5]
                 result_text += f"\n  - 🚪 Porte: {', '.join(map(str, ports))}"
         
-        user_lang = await self.get_user_language(user_id)
+        user_lang = self.get_user_language(user_id)
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
-        balance = await self.get_user_balance(user_id)
-        result_text += f"\n{translations[user_lang]['balance']} {balance}"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n\n{data_italiana}"
         
@@ -3370,10 +2985,9 @@ Errore: {str(e)[:100]}
         result_text += f"\n\n📊 SICUREZZA: {strength}"
         result_text += f"\n📏 Lunghezza: {len(password)} caratteri"
         
-        user_lang = await self.get_user_language(user_id)
+        user_lang = self.get_user_language(user_id)
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
-        balance = await self.get_user_balance(user_id)
-        result_text += f"\n{translations[user_lang]['balance']} {balance}"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n\n{data_italiana}"
         
@@ -3405,14 +3019,13 @@ Errore: {str(e)[:100]}
                 if result.get('email'):
                     result_text += f"\n    📧 Email: {result['email']}"
         else:
-            user_lang = await self.get_user_language(user_id)
+            user_lang = self.get_user_language(user_id)
             result_text += f"\n\n{translations[user_lang]['no_results']}"
             result_text += f"\n🔑 Hash non presente nei database."
         
-        user_lang = await self.get_user_language(user_id)
+        user_lang = self.get_user_language(user_id)
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
-        balance = await self.get_user_balance(user_id)
-        result_text += f"\n{translations[user_lang]['balance']} {balance}"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n\n{data_italiana}"
         
@@ -3456,7 +3069,7 @@ Errore: {str(e)[:100]}
                         result_text += f"\n    📧 Email: {entry['email']}"
         
         else:
-            user_lang = await self.get_user_language(user_id)
+            user_lang = self.get_user_language(user_id)
             result_text += f"\n\n{translations[user_lang]['no_results']}"
             result_text += f"\n📄 Il documento non è stato trovato nei database conosciuti."
         
@@ -3472,10 +3085,9 @@ Errore: {str(e)[:100]}
         
         result_text += f"\n\n📋 TIPO DOCUMENTO: {doc_type}"
         
-        user_lang = await self.get_user_language(user_id)
+        user_lang = self.get_user_language(user_id)
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
-        balance = await self.get_user_balance(user_id)
-        result_text += f"\n{translations[user_lang]['balance']} {balance}"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n\n{data_italiana}"
         
@@ -3535,7 +3147,7 @@ Errore: {str(e)[:100]}
                         result_text += f"\n     👤 Persona: {company['full_name']}"
         
         else:
-            user_lang = await self.get_user_language(user_id)
+            user_lang = self.get_user_language(user_id)
             result_text += f"\n\n{translations[user_lang]['no_results']}"
             result_text += f"\n📍 L'indirizzo non è stato trovato nei database conosciuti."
             
@@ -3544,10 +3156,9 @@ Errore: {str(e)[:100]}
             result_text += f"\n  - Per indirizzo lavorativo: 'Ufficio Via Torino 45'"
             result_text += f"\n  - Per indirizzo casa: 'Casa Via Verdi 12'"
         
-        user_lang = await self.get_user_language(user_id)
+        user_lang = self.get_user_language(user_id)
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
-        balance = await self.get_user_balance(user_id)
-        result_text += f"\n{translations[user_lang]['balance']} {balance}"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n\n{data_italiana}"
         
@@ -3563,7 +3174,7 @@ Errore: {str(e)[:100]}
         """Ricerca Facebook completa"""
         now = datetime.now()
         
-        user_lang = await self.get_user_language(user_id)
+        user_lang = self.get_user_language(user_id)
         result_text = f"""📘 RICERCA FACEBOOK COMPLETA
 - {query} - {translations[user_lang]['processing']}"""
         
@@ -3655,7 +3266,7 @@ Errore: {str(e)[:100]}
                 pass
         
         if total_results == 0:
-            user_lang = await self.get_user_language(user_id)
+            user_lang = self.get_user_language(user_id)
             result_text += f"\n\n{translations[user_lang]['no_results']}"
             result_text += f"\n📘 Facebook ha limitato le ricerche pubbliche."
             result_text += f"\n💡 Suggerimenti:"
@@ -3669,10 +3280,9 @@ Errore: {str(e)[:100]}
         result_text += f"\n  - 👥 Cerca su LinkedIn"
         result_text += f"\n  - 📧 Cerca con email associata"
         
-        user_lang = await self.get_user_language(user_id)
+        user_lang = self.get_user_language(user_id)
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
-        balance = await self.get_user_balance(user_id)
-        result_text += f"\n{translations[user_lang]['balance']} {balance}"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
         result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         result_text += f"\n\n{data_italiana}"
         
@@ -3687,7 +3297,7 @@ Errore: {str(e)[:100]}
     async def menu_completo(self, update: Update, context: CallbackContext):
         """Mostra il menu completo"""
         user_id = update.effective_user.id
-        user_lang = await self.get_user_language(user_id)
+        user_lang = self.get_user_language(user_id)
         
         now = datetime.now()
         mesi = {
@@ -3696,9 +3306,6 @@ Errore: {str(e)[:100]}
             9: 'settembre', 10: 'ottobre', 11: 'novembre', 12: 'dicembre'
         }
         data_italiana = f"{now.day} {mesi.get(now.month, 'novembre')}"
-        
-        balance = await self.get_user_balance(user_id)
-        searches = await self.get_user_searches(user_id)
         
         menu_text = f"""{translations[user_lang]['menu_title']}
 
@@ -3749,8 +3356,8 @@ Errore: {str(e)[:100]}
 · Massimo 50 righe
 · Formato UTF-8
 
-💰 Crediti disponibili: {balance}
-📊 Ricerche effettuate: {searches}
+💰 Crediti disponibili: {self.get_user_balance(user_id)}
+📊 Ricerche effettuate: {self.get_user_searches(user_id)}
 
 ⏰ {now.hour:02d}:{now.minute:02d}
 
@@ -3766,8 +3373,8 @@ Errore: {str(e)[:100]}
     async def balance_command(self, update: Update, context: CallbackContext):
         """Mostra il saldo crediti"""
         user_id = update.effective_user.id
-        balance = await self.get_user_balance(user_id)
-        searches = await self.get_user_searches(user_id)
+        balance = self.get_user_balance(user_id)
+        searches = self.get_user_searches(user_id)
         
         now = datetime.now()
         mesi = {
@@ -3804,25 +3411,24 @@ Errore: {str(e)[:100]}
             await update.message.reply_text("❌ Accesso negato")
             return
         
-        try:
-            users_count = await db_fetchone('SELECT COUNT(*) FROM users')
-            total_users = users_count[0] if users_count else 0
-            
-            searches_count = await db_fetchone('SELECT COUNT(*) FROM searches')
-            total_searches = searches_count[0] if searches_count else 0
-            
-            credits_count = await db_fetchone('SELECT SUM(balance) FROM users')
-            total_credits = credits_count[0] or 0 if credits_count else 0
-            
-            now = datetime.now()
-            mesi = {
-                1: 'gennaio', 2: 'febbraio', 3: 'marzo', 4: 'aprile',
-                5: 'maggio', 6: 'giugno', 7: 'luglio', 8: 'agosto',
-                9: 'settembre', 10: 'ottobre', 11: 'novembre', 12: 'dicembre'
-            }
-            data_italiana = f"{now.day} {mesi.get(now.month, 'novembre')}"
-            
-            admin_text = f"""🛡️ PANNELLO AMMINISTRATIVO
+        c.execute('SELECT COUNT(*) FROM users')
+        total_users = c.fetchone()[0]
+        
+        c.execute('SELECT COUNT(*) FROM searches')
+        total_searches = c.fetchone()[0]
+        
+        c.execute('SELECT SUM(balance) FROM users')
+        total_credits = c.fetchone()[0] or 0
+        
+        now = datetime.now()
+        mesi = {
+            1: 'gennaio', 2: 'febbraio', 3: 'marzo', 4: 'aprile',
+            5: 'maggio', 6: 'giugno', 7: 'luglio', 8: 'agosto',
+            9: 'settembre', 10: 'ottobre', 11: 'novembre', 12: 'dicembre'
+        }
+        data_italiana = f"{now.day} {mesi.get(now.month, 'novembre')}"
+        
+        admin_text = f"""🛡️ PANNELLO AMMINISTRATIVO
 
 📊 Statistiche:
 · 👥 Utenti totali: {total_users}
@@ -3830,22 +3436,18 @@ Errore: {str(e)[:100]}
 · 💎 Credit totali: {total_credits}
 
 👥 Ultimi 5 utenti:"""
-            
-            users = await db_fetchall(
-                'SELECT user_id, username, balance, searches FROM users ORDER BY user_id DESC LIMIT 5'
-            )
-            
-            for user in users:
-                admin_text += f"\n\n- 👤 ID: {user[0]} | @{user[1] or 'N/A'}"
-                admin_text += f"\n  💎 Crediti: {user[2]} | 🔍 Ricerche: {user[3]}"
-            
-            admin_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
-            admin_text += f"\n\n{data_italiana}"
-            
-            await update.message.reply_text(admin_text)
-        except Exception as e:
-            logger.error(f"Admin panel error: {e}")
-            await update.message.reply_text(f"❌ Errore nel pannello admin: {str(e)[:100]}")
+        
+        c.execute('SELECT user_id, username, balance, searches FROM users ORDER BY user_id DESC LIMIT 5')
+        users = c.fetchall()
+        
+        for user in users:
+            admin_text += f"\n\n- 👤 ID: {user[0]} | @{user[1] or 'N/A'}"
+            admin_text += f"\n  💎 Crediti: {user[2]} | 🔍 Ricerche: {user[3]}"
+        
+        admin_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
+        admin_text += f"\n\n{data_italiana}"
+        
+        await update.message.reply_text(admin_text)
     
     async def addcredits_command(self, update: Update, context: CallbackContext):
         """Aggiunge crediti a un utente (solo admin)"""
@@ -3866,56 +3468,24 @@ Errore: {str(e)[:100]}
             target_user_id = int(context.args[0])
             amount = int(context.args[1])
             
-            # Prima controlla se l'utente esiste
-            user_check = await db_fetchone(
-                'SELECT user_id, username, balance FROM users WHERE user_id = ?', 
-                [target_user_id]
-            )
+            c.execute('SELECT * FROM users WHERE user_id = ?', (target_user_id,))
+            user = c.fetchone()
             
-            if not user_check:
-                # Crea l'utente se non esiste
-                success = await self.add_credits(target_user_id, amount)
-                if success:
-                    await update.message.reply_text(
-                        f"✅ Creato nuovo utente {target_user_id} con {amount} crediti\n"
-                        f"💎 Saldo: {amount} crediti"
-                    )
-                    
-                    # Notifica l'utente
-                    try:
-                        await context.bot.send_message(
-                            chat_id=target_user_id,
-                            text=f"🎉 Sei stato registrato e hai ricevuto {amount} crediti!\n"
-                                 f"💎 Saldo attuale: {amount} crediti\n"
-                                 f"🔍 Ricerche disponibili: {int(amount / 2)}\n"
-                                 f"Usa /start per iniziare."
-                        )
-                    except:
-                        pass
-                else:
-                    await update.message.reply_text("❌ Errore nella creazione utente")
+            if not user:
+                await update.message.reply_text(f"❌ Utente {target_user_id} non trovato")
                 return
             
-            # Se l'utente esiste, aggiungi crediti
-            success = await self.add_credits(target_user_id, amount)
+            success = self.add_credits(target_user_id, amount)
             
             if success:
-                new_balance_result = await db_fetchone(
-                    'SELECT balance FROM users WHERE user_id = ?', 
-                    [target_user_id]
-                )
-                new_balance = new_balance_result[0] if new_balance_result else 0
-                
-                username = user_check[1] if len(user_check) > 1 else 'N/A'
-                old_balance = user_check[2] if len(user_check) > 2 else 0
+                c.execute('SELECT balance FROM users WHERE user_id = ?', (target_user_id,))
+                new_balance = c.fetchone()[0]
                 
                 await update.message.reply_text(
-                    f"✅ Aggiunti {amount} crediti a @{username} (ID: {target_user_id})\n"
-                    f"💎 Vecchio saldo: {old_balance}\n"
-                    f"💎 Nuovo saldo: {new_balance}"
+                    f"✅ Aggiunti {amount} crediti all'utente {target_user_id}\n"
+                    f"💎 Nuovo saldo: {new_balance} crediti"
                 )
                 
-                # Notifica l'utente
                 try:
                     await context.bot.send_message(
                         chat_id=target_user_id,
@@ -3923,8 +3493,8 @@ Errore: {str(e)[:100]}
                              f"💎 Saldo attuale: {new_balance} crediti\n"
                              f"🔍 Ricerche disponibili: {int(new_balance / 2)}"
                     )
-                except Exception as e:
-                    logger.error(f"Error notifying user: {e}")
+                except:
+                    pass
             else:
                 await update.message.reply_text("❌ Errore durante l'aggiunta dei crediti")
                 
@@ -3932,7 +3502,7 @@ Errore: {str(e)[:100]}
             await update.message.reply_text("❌ Formato non valido. Usa: /addcredits <user_id> <amount>")
         except Exception as e:
             logger.error(f"Add credits error: {e}")
-            await update.message.reply_text(f"❌ Errore: {str(e)[:100]}")
+            await update.message.reply_text(f"❌ Errore: {str(e)}")
     
     async def help_command(self, update: Update, context: CallbackContext):
         """Comando help"""
@@ -4066,7 +3636,7 @@ Errore: {str(e)[:100]}
             return
         
         if not await self.update_balance(user_id, 2):
-            user_lang = await self.get_user_language(user_id)
+            user_lang = self.get_user_language(user_id)
             await update.message.reply_text(
                 translations[user_lang]['insufficient_credits']
             )
@@ -4080,7 +3650,7 @@ Errore: {str(e)[:100]}
         now = datetime.now()
         data_italiana = f"{now.day} {mesi.get(now.month, 'novembre')}"
         
-        user_lang = await self.get_user_language(user_id)
+        user_lang = self.get_user_language(user_id)
         wait_text = f"""🔍 {translations[user_lang]['processing']}
 
 ⏰ {now.hour:02d}:{now.minute:02d}
@@ -4111,7 +3681,7 @@ Errore: {str(e)[:100]}
             
         except Exception as e:
             logger.error(f"Social search error: {e}")
-            user_lang = await self.get_user_language(user_id)
+            user_lang = self.get_user_language(user_id)
             error_text = f"""{translations[user_lang]['error']}
 Query: {query}
 
@@ -4140,8 +3710,8 @@ Query: {query}
             )
             return
         
-        if await self.get_user_balance(user_id) < 2:
-            user_lang = await self.get_user_language(user_id)
+        if self.get_user_balance(user_id) < 2:
+            user_lang = self.get_user_language(user_id)
             await update.message.reply_text(
                 translations[user_lang]['insufficient_credits']
             )
@@ -4217,7 +3787,7 @@ Query: {query}
                 await msg.edit_text(f"⚠️ Limitato a 50 righe (massimo consentito)")
             
             total_cost = len(lines) * 2
-            current_balance = await self.get_user_balance(user_id)
+            current_balance = self.get_user_balance(user_id)
             
             if current_balance < total_cost:
                 error_text = f"""❌ CREDITI INSUFFICIENTI
@@ -4298,7 +3868,7 @@ Query: {query}
 ✅ Ricerche riuscite: {success_count}
 ❌ Errori: {error_count}
 💰 Costo totale: {total_cost} crediti
-💳 Nuovo saldo: {await self.get_user_balance(user_id)} crediti
+💳 Nuovo saldo: {self.get_user_balance(user_id)} crediti
 
 📝 RISULTATI DETTAGLIATI:
 """
@@ -4320,7 +3890,7 @@ Query: {query}
                 for part in parts:
                     await update.message.reply_text(part)
             
-            await self.log_search(user_id, f"FILE: {document.file_name}", "mass_search", 
+            self.log_search(user_id, f"FILE: {document.file_name}", "mass_search", 
                           f"Righe: {len(lines)}, Successi: {success_count}, Errori: {error_count}")
             
         except Exception as e:
@@ -4343,9 +3913,9 @@ Query: {query}
             except:
                 await update.message.reply_text(error_text)
 
-# ==================== FUNZIONI PER CARICARE DATI ====================
+# ==================== FUNZIONE PER CARICARE DATI FACEBOOK LEAKS ====================
 
-async def load_facebook_leaks_data():
+def load_facebook_leaks_data():
     """Carica dati Facebook leaks nel database"""
     try:
         facebook_leaks_files = [
@@ -4364,25 +3934,25 @@ async def load_facebook_leaks_data():
                     count = 0
                     for row in reader:
                         if len(row) >= 11:
-                            await db_execute(
-                                '''INSERT OR IGNORE INTO facebook_leaks 
-                                (phone, facebook_id, name, surname, gender, birth_date, city, country, company, relationship_status, leak_date)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
-                                row[:11]
-                            )
+                            c.execute('''INSERT OR IGNORE INTO facebook_leaks 
+                                       (phone, facebook_id, name, surname, gender, birth_date, city, country, company, relationship_status, leak_date)
+                                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', row[:11])
                             count += 1
                     
+                    conn.commit()
                     logger.info(f"✅ Facebook leaks data loaded from {file_path}: {count} records")
                     return True
         
-        logger.info("⚠️ No Facebook leaks data file found - skipping")
-        return True  # Non è un errore se non ci sono file
+        logger.warning("⚠️ No Facebook leaks data file found")
+        return False
         
     except Exception as e:
         logger.error(f"Error loading Facebook leaks: {e}")
-        return True  # Continua comunque
+        return False
 
-async def load_addresses_documents_data():
+# ==================== FUNZIONE PER CARICARE DATI DOCUMENTI E INDIRIZZI ====================
+
+def load_addresses_documents_data():
     """Carica dati documenti e indirizzi nel database"""
     try:
         addresses_files = [
@@ -4394,7 +3964,6 @@ async def load_addresses_documents_data():
         
         for file_path in addresses_files:
             if os.path.exists(file_path):
-                logger.info(f"📥 Found addresses/documents file: {file_path}")
                 with open(file_path, 'r', encoding='utf-8') as f:
                     reader = csv.reader(f)
                     header = next(reader, None)
@@ -4402,19 +3971,13 @@ async def load_addresses_documents_data():
                     count = 0
                     for row in reader:
                         if len(row) >= 10:
-                            try:
-                                await db_execute(
-                                    '''INSERT OR IGNORE INTO addresses_documents 
-                                    (document_number, document_type, full_name, home_address, work_address, 
-                                     city, country, phone, email, source)
-                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
-                                    row[:10]
-                                )
-                                count += 1
-                            except Exception as e:
-                                logger.error(f"Error inserting row {count+1}: {e}")
-                                logger.error(f"Row data: {row[:10]}")
+                            c.execute('''INSERT OR IGNORE INTO addresses_documents 
+                                       (document_number, document_type, full_name, home_address, work_address, 
+                                        city, country, phone, email, source)
+                                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', row[:10])
+                            count += 1
                     
+                    conn.commit()
                     logger.info(f"✅ Addresses/documents data loaded from {file_path}: {count} records")
                     return True
         
@@ -4430,23 +3993,18 @@ async def load_addresses_documents_data():
         ]
         
         for data in sample_data:
-            try:
-                await db_execute(
-                    '''INSERT OR IGNORE INTO addresses_documents 
-                    (document_number, document_type, full_name, home_address, work_address, 
-                     city, country, phone, email, source)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
-                    data
-                )
-            except Exception as e:
-                logger.error(f"Error inserting sample data: {e}")
+            c.execute('''INSERT OR IGNORE INTO addresses_documents 
+                       (document_number, document_type, full_name, home_address, work_address, 
+                        city, country, phone, email, source)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', data)
         
+        conn.commit()
         logger.info(f"✅ Sample addresses/documents data created: {len(sample_data)} records")
         return True
         
     except Exception as e:
         logger.error(f"Error loading addresses/documents: {e}")
-        return True  # Continua comunque
+        return False
 
 # ==================== FLASK APP PER RENDER ====================
 
@@ -4464,26 +4022,11 @@ def health():
 
 async def setup_bot():
     """Configura il bot con tutti gli handler"""
-    logger.info("📥 Initializing Turso database...")
-    try:
-        await init_database()
-        logger.info("✅ Database initialized successfully")
-    except Exception as e:
-        logger.error(f"❌ Database initialization error: {e}")
-    
     logger.info("📥 Loading Facebook leaks data...")
-    try:
-        await load_facebook_leaks_data()
-        logger.info("✅ Facebook leaks data loaded")
-    except Exception as e:
-        logger.error(f"❌ Facebook leaks error: {e}")
+    load_facebook_leaks_data()
     
     logger.info("📥 Loading addresses/documents data...")
-    try:
-        await load_addresses_documents_data()
-        logger.info("✅ Addresses/documents data loaded")
-    except Exception as e:
-        logger.error(f"❌ Addresses/documents error: {e}")
+    load_addresses_documents_data()
     
     application = Application.builder().token(BOT_TOKEN).build()
     
@@ -4517,6 +4060,7 @@ async def setup_bot():
 
 def start_polling():
     """Avvia il bot in modalità polling (per sviluppo)"""
+    import asyncio
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     
@@ -4526,9 +4070,11 @@ def start_polling():
     application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 def start_webhook():
-    """Avvia il bot in modalità webhook (per Render)"""
+    """Avvia il bot in modalità webhook (per Render) - VERSIONE SEMPLIFICATA"""
+    import asyncio
     import threading
     
+    # Avvia Flask in un thread separato su una porta diversa
     def run_flask():
         flask_app = Flask(__name__)
         
@@ -4540,6 +4086,7 @@ def start_webhook():
         def health():
             return 'OK', 200
         
+        # Usa una porta diversa per Flask (non la porta principale di Render)
         flask_port = 8080
         flask_app.run(host='0.0.0.0', port=flask_port, debug=False, use_reloader=False, threaded=True)
     
@@ -4547,14 +4094,17 @@ def start_webhook():
     flask_thread.start()
     logger.info("✅ Server Flask avviato sulla porta 8080")
     
+    # Aspetta che Flask sia avviato
     import time
     time.sleep(3)
     
+    # Avvia il bot webhook sulla porta principale
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     
     application = loop.run_until_complete(setup_bot())
     
+    # Configura webhook per Render
     webhook_url = os.environ.get('WEBHOOK_URL')
     
     if not webhook_url:
@@ -4562,12 +4112,15 @@ def start_webhook():
         sys.exit(1)
     
     webhook_url = webhook_url.rstrip('/')
+    
+    # LA PORTA PRINCIPALE è quella assegnata da Render
     port = int(os.environ.get('PORT', 10000))
     
     logger.info(f"🚀 Avvio bot webhook su porta: {port}")
     logger.info(f"🌐 Webhook URL: {webhook_url}/{BOT_TOKEN}")
     
     try:
+        # Avvia webhook sulla porta principale
         application.run_webhook(
             listen="0.0.0.0",
             port=port,
