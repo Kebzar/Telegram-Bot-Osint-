@@ -21,9 +21,8 @@ import dns.resolver
 from bs4 import BeautifulSoup
 import shodan
 from flask import Flask, request
-
-# Aggiungi questa import per Turso
-from libsql_client import create_client
+import os
+from libsql_experimental import create_client
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -218,9 +217,6 @@ translations = {
 }
 
 # ==================== DATABASE SETUP - TURSO REMOTO (Sincrono) ====================
-import os
-from libsql_experimental import create_client
-
 TURSO_DATABASE_URL = os.environ.get('TURSO_DATABASE_URL')
 TURSO_AUTH_TOKEN = os.environ.get('TURSO_AUTH_TOKEN')
 
