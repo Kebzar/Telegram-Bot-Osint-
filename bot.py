@@ -219,7 +219,7 @@ translations = {
 
 # ==================== CLIENT TURSO ASINCRONO ====================
 class TursoDatabase:
-    """Cliente per Turso (libSQL) - Versione compatibile con libsql-client recente"""
+    """Cliente asincrono per Turso (libSQL) - Versione ufficiale aggiornata"""
     
     def __init__(self):
         self.db_url = os.environ.get('TURSO_DB_URL', '')
@@ -236,13 +236,11 @@ class TursoDatabase:
             
             import libsql_client
             
-            if self.db_url.startswith('libsql://'):
-                self.client = libsql_client.create_client_sync(
-                    url=self.db_url,
-                    auth_token=self.auth_token
-                )
-            else:
-                self.client = libsql_client.create_client_sync(url=self.db_url)
+            # Crea il client asincrono (funziona sia per remoto che locale)
+            self.client = libsql_client.create_client(
+                url=self.db_url,
+                auth_token=self.auth_token if self.db_url.startswith('libsql://') else None
+            )
             
             logger.info("✅ Connesso a Turso (libSQL)")
             await self.initialize_tables()
@@ -254,7 +252,8 @@ class TursoDatabase:
     async def disconnect(self):
         """Chiude la connessione"""
         if self.client:
-            self.client.close()
+            await self.client.close()
+            self.client = None
             logger.info("✅ Disconnesso da Turso")
     
     async def execute(self, sql: str, params: tuple = ()):
@@ -263,7 +262,9 @@ class TursoDatabase:
             if not self.client:
                 await self.connect()
             
-            result = self.client.execute(sql, params)
+            # Usa context manager per ogni execute (best practice)
+            async with self.client as client:
+                result = await client.execute(sql, params)
             return result
         except Exception as e:
             logger.error(f"❌ Errore esecuzione query: {e}\nSQL: {sql}\nParams: {params}")
