@@ -216,9 +216,9 @@ translations = {
     }
 }
 
-# ==================== CLIENT TURSO REMOTO (libsql-client ufficiale) ====================
+# ==================== CLIENT TURSO REMOTO (libsql-client attuale) ====================
 class TursoDatabase:
-    """Cliente remoto puro per Turso (libsql-client)"""
+    """Cliente remoto puro per Turso - versione stabile 2025"""
     
     def __init__(self):
         self.db_url = os.environ.get('TURSO_DB_URL', '')
@@ -234,8 +234,9 @@ class TursoDatabase:
             
             import libsql_client
             
-            self.client = await libsql_client.create_client(
-                url=self.db_url,  # libsql://relevant-asgardian-kebzar-kebzar.turso.io
+            # create_client è SINCRONO nella versione attuale
+            self.client = libsql_client.create_client(
+                url=self.db_url,          # libsql://relevant-asgardian-kebzar-kebzar.turso.io
                 auth_token=self.auth_token
             )
             
@@ -250,6 +251,7 @@ class TursoDatabase:
             if not self.client:
                 await self.connect()
             
+            # execute è async
             result = await self.client.execute(sql, list(params) if params else [])
             return result
         except Exception as e:
@@ -266,7 +268,6 @@ class TursoDatabase:
     
     async def initialize_tables(self):
         tables_sql = [
-            # Copia le tue CREATE TABLE qui (identiche a prima)
             '''CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
                 username TEXT,
@@ -277,7 +278,58 @@ class TursoDatabase:
                 last_active TEXT DEFAULT CURRENT_TIMESTAMP,
                 language TEXT DEFAULT 'en'
             )''',
-            # ... aggiungi tutte le altre tabelle
+            # ... tutte le altre tabelle come prima
+            '''CREATE TABLE IF NOT EXISTS searches (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                query TEXT,
+                type TEXT,
+                results TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )''',
+            '''CREATE TABLE IF NOT EXISTS breach_data (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT,
+                phone TEXT,
+                name TEXT,
+                surname TEXT,
+                username TEXT,
+                password TEXT,
+                hash TEXT,
+                source TEXT,
+                breach_name TEXT,
+                breach_date TEXT,
+                found_date DATETIME DEFAULT CURRENT_TIMESTAMP
+            )''',
+            '''CREATE TABLE IF NOT EXISTS facebook_leaks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                phone TEXT,
+                facebook_id TEXT,
+                name TEXT,
+                surname TEXT,
+                gender TEXT,
+                birth_date TEXT,
+                city TEXT,
+                country TEXT,
+                company TEXT,
+                relationship_status TEXT,
+                leak_date TEXT,
+                found_date DATETIME DEFAULT CURRENT_TIMESTAMP
+            )''',
+            '''CREATE TABLE IF NOT EXISTS addresses_documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                document_number TEXT,
+                document_type TEXT,
+                full_name TEXT,
+                home_address TEXT,
+                work_address TEXT,
+                city TEXT,
+                country TEXT,
+                phone TEXT,
+                email TEXT,
+                source TEXT,
+                found_date DATETIME DEFAULT CURRENT_TIMESTAMP
+            )'''
         ]
         
         for sql in tables_sql:
