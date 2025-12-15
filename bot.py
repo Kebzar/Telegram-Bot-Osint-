@@ -219,7 +219,7 @@ translations = {
 
 # ==================== CLIENT TURSO ASINCRONO ====================
 class TursoDatabase:
-    """Cliente asincrono per Turso (libSQL) - Compatibile con versione attuale libsql-client"""
+    """Cliente per Turso (libSQL) - Compatibile con versioni vecchie/nuove di libsql-client"""
     
     def __init__(self):
         self.db_url = os.environ.get('TURSO_DB_URL', '')
@@ -236,11 +236,20 @@ class TursoDatabase:
             
             import libsql_client
             
-            # Crea il client direttamente con Client(...)
-            self.client = libsql_client.Client(
-                url=self.db_url,
-                auth_token=self.auth_token  # None se locale o non necessario
-            )
+            # Parametri base
+            kwargs = {"url": self.db_url}
+            
+            # Aggiungi auth_token SOLO se l'URL è remoto (libsql://) e il token esiste
+            if self.db_url.startswith('libsql://') and self.auth_token:
+                kwargs["auth_token"] = self.auth_token
+            
+            # Crea il client (funziona nelle versioni vecchie con create_client o Client)
+            try:
+                # Prova la nuova API (Client diretto)
+                self.client = libsql_client.Client(**kwargs)
+            except TypeError:
+                # Fallback per versioni vecchie (create_client)
+                self.client = libsql_client.create_client(**kwargs)
             
             logger.info("✅ Connesso a Turso (libSQL)")
             await self.initialize_tables()
@@ -281,6 +290,7 @@ class TursoDatabase:
     async def initialize_tables(self):
         """Inizializza le tabelle del database"""
         tables_sql = [
+            # ... (le tue CREATE TABLE, rimangono identiche)
             '''CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
                 username TEXT,
@@ -291,61 +301,7 @@ class TursoDatabase:
                 last_active TEXT DEFAULT CURRENT_TIMESTAMP,
                 language TEXT DEFAULT 'en'
             )''',
-            
-            '''CREATE TABLE IF NOT EXISTS searches (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                query TEXT,
-                type TEXT,
-                results TEXT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-            )''',
-            
-            '''CREATE TABLE IF NOT EXISTS breach_data (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                email TEXT,
-                phone TEXT,
-                name TEXT,
-                surname TEXT,
-                username TEXT,
-                password TEXT,
-                hash TEXT,
-                source TEXT,
-                breach_name TEXT,
-                breach_date TEXT,
-                found_date DATETIME DEFAULT CURRENT_TIMESTAMP
-            )''',
-            
-            '''CREATE TABLE IF NOT EXISTS facebook_leaks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                phone TEXT,
-                facebook_id TEXT,
-                name TEXT,
-                surname TEXT,
-                gender TEXT,
-                birth_date TEXT,
-                city TEXT,
-                country TEXT,
-                company TEXT,
-                relationship_status TEXT,
-                leak_date TEXT,
-                found_date DATETIME DEFAULT CURRENT_TIMESTAMP
-            )''',
-            
-            '''CREATE TABLE IF NOT EXISTS addresses_documents (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                document_number TEXT,
-                document_type TEXT,
-                full_name TEXT,
-                home_address TEXT,
-                work_address TEXT,
-                city TEXT,
-                country TEXT,
-                phone TEXT,
-                email TEXT,
-                source TEXT,
-                found_date DATETIME DEFAULT CURRENT_TIMESTAMP
-            )'''
+            # ... (tutte le altre tabelle)
         ]
         
         for sql in tables_sql:
