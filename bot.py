@@ -250,28 +250,6 @@ else:
         for params in params_list:
             execute_query(sql, params)
 
-else:
-    import sqlite3
-    conn = sqlite3.connect('leakosint_bot.db', check_same_thread=False)
-    c = conn.cursor()
-    logger.warning("Usando SQLite locale (fallback per sviluppo)")
-    
-    # Funzioni helper per compatibilità
-    def execute_query(sql: str, params=()):
-        return c.execute(sql, params)
-    
-    def fetchall_query(sql: str, params=()):
-        c.execute(sql, params)
-        return c.fetchall()
-    
-    def fetchone_query(sql: str, params=()):
-        c.execute(sql, params)
-        return c.fetchone()
-    
-    def executemany_query(sql: str, params_list):
-        c.executemany(sql, params_list)
-        conn.commit()
-
 # Tabelle database
 execute_query('''CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY,
