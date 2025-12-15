@@ -219,7 +219,7 @@ translations = {
 
 # ==================== CLIENT TURSO ASINCRONO ====================
 class TursoDatabase:
-    """Cliente asincrono per Turso (libSQL)"""
+    """Cliente per Turso (libSQL) - Versione compatibile con libsql-client recente"""
     
     def __init__(self):
         self.db_url = os.environ.get('TURSO_DB_URL', '')
@@ -234,17 +234,15 @@ class TursoDatabase:
                 logger.error("❌ TURSO_DB_URL non configurato!")
                 raise ValueError("TURSO_DB_URL non configurato")
             
+            import libsql_client
+            
             if self.db_url.startswith('libsql://'):
-                if not self.auth_token:
-                    logger.warning("⚠️ TURSO_AUTH_TOKEN non configurato per connessione remota")
-                
-                self.client = await libsql_client.create_client(
+                self.client = libsql_client.create_client_sync(
                     url=self.db_url,
                     auth_token=self.auth_token
                 )
             else:
-                # URL locale (file: o http:)
-                self.client = await libsql_client.create_client(url=self.db_url)
+                self.client = libsql_client.create_client_sync(url=self.db_url)
             
             logger.info("✅ Connesso a Turso (libSQL)")
             await self.initialize_tables()
@@ -256,7 +254,7 @@ class TursoDatabase:
     async def disconnect(self):
         """Chiude la connessione"""
         if self.client:
-            await self.client.close()
+            self.client.close()
             logger.info("✅ Disconnesso da Turso")
     
     async def execute(self, sql: str, params: tuple = ()):
@@ -265,21 +263,19 @@ class TursoDatabase:
             if not self.client:
                 await self.connect()
             
-            result = await self.client.execute(sql, params)
+            result = self.client.execute(sql, params)
             return result
         except Exception as e:
             logger.error(f"❌ Errore esecuzione query: {e}\nSQL: {sql}\nParams: {params}")
             raise
     
     async def fetch_one(self, sql: str, params: tuple = ()):
-        """Esegue una query e restituisce una riga"""
         result = await self.execute(sql, params)
         if result.rows:
             return result.rows[0]
         return None
     
     async def fetch_all(self, sql: str, params: tuple = ()):
-        """Esegue una query e restituisce tutte le righe"""
         result = await self.execute(sql, params)
         return result.rows
     
