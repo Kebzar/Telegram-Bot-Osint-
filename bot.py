@@ -217,9 +217,9 @@ translations = {
     }
 }
 
-# ==================== CLIENT TURSO ASINCRONO ====================
+# ==================== CLIENT TURSO REMOTO (Hrana over HTTP) ====================
 class TursoDatabase:
-    """Cliente per Turso (libSQL) - Compatibile con versioni vecchie/nuove di libsql-client"""
+    """Cliente per Turso (libSQL) - Connessione remota stabile via HTTPS"""
     
     def __init__(self):
         self.db_url = os.environ.get('TURSO_DB_URL', '')
@@ -230,34 +230,43 @@ class TursoDatabase:
     async def connect(self):
         """Connette al database Turso"""
         try:
-            if not self.db_url:
-                logger.error("❌ TURSO_DB_URL non configurato!")
-                raise ValueError("TURSO_DB_URL non configurato")
+            if not self.db_url or not self.auth_token:
+                logger.error("❌ TURSO_DB_URL o TURSO_AUTH_TOKEN non configurati!")
+                raise ValueError("TURSO_DB_URL e TURSO_AUTH_TOKEN obbligatori")
             
             import libsql_client
-   # ==================== CLIENT TURSO REMOTO (Hrana) ====================
-from libsql_client import create_client  # Nuovo import
-
-class TursoDatabase:
-    def __init__(self):
-        self.db_url = os.environ.get('TURSO_DB_URL')
-        self.auth_token = os.environ.get('TURSO_AUTH_TOKEN')
-        self.client = None
+            
+            # Crea il client remoto (Hrana)
+            self.client = libsql_client.create_client(
+                url=self.db_url,          # Deve essere https://...
+                auth_token=self.auth_token
+            )
+            
+            logger.info("✅ Connesso a Turso (libSQL remoto via HTTPS)")
+            await self.initialize_tables()
+            return self.client
+        except Exception as e:
+            logger.error(f"❌ Errore connessione Turso: {e}")
+            raise
     
-    async def connect(self):
-        if not self.db_url or not self.auth_token:
-            raise ValueError("TURSO_DB_URL e TURSO_AUTH_TOKEN richiesti")
-        
-        self.client = create_client(url=self.db_url, auth_token=self.auth_token)
-        logger.info("✅ Connesso a Turso (Hrana client)")
-        await self.initialize_tables()
+    async def disconnect(self):
+        """Chiude la connessione"""
+        if self.client:
+            await self.client.close()
+            self.client = None
+            logger.info("✅ Disconnesso da Turso")
     
     async def execute(self, sql: str, params: tuple = ()):
-        if not self.client:
-            await self.connect()
-        
-        result = await self.client.execute(sql, params)
-        return result
+        """Esegue una query SQL"""
+        try:
+            if not self.client:
+                await self.connect()
+            
+            result = await self.client.execute(sql, params)
+            return result
+        except Exception as e:
+            logger.error(f"❌ Errore esecuzione query: {e}\nSQL: {sql}\nParams: {params}")
+            raise
     
     async def fetch_one(self, sql: str, params: tuple = ()):
         result = await self.execute(sql, params)
@@ -268,23 +277,83 @@ class TursoDatabase:
         return result.rows
     
     async def initialize_tables(self):
-        # Le tue CREATE TABLE (uguali)
-        tables_sql = [ ... ]  # copia le tue
+        """Inizializza le tabelle del database"""
+        tables_sql = [
+            '''CREATE TABLE IF NOT EXISTS users (
+                user_id INTEGER PRIMARY KEY,
+                username TEXT,
+                balance INTEGER DEFAULT 4,
+                searches INTEGER DEFAULT 0,
+                registration_date TEXT DEFAULT CURRENT_TIMESTAMP,
+                subscription_type TEXT DEFAULT 'free',
+                last_active TEXT DEFAULT CURRENT_TIMESTAMP,
+                language TEXT DEFAULT 'en'
+            )''',
+            
+            '''CREATE TABLE IF NOT EXISTS searches (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                query TEXT,
+                type TEXT,
+                results TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )''',
+            
+            '''CREATE TABLE IF NOT EXISTS breach_data (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT,
+                phone TEXT,
+                name TEXT,
+                surname TEXT,
+                username TEXT,
+                password TEXT,
+                hash TEXT,
+                source TEXT,
+                breach_name TEXT,
+                breach_date TEXT,
+                found_date DATETIME DEFAULT CURRENT_TIMESTAMP
+            )''',
+            
+            '''CREATE TABLE IF NOT EXISTS facebook_leaks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                phone TEXT,
+                facebook_id TEXT,
+                name TEXT,
+                surname TEXT,
+                gender TEXT,
+                birth_date TEXT,
+                city TEXT,
+                country TEXT,
+                company TEXT,
+                relationship_status TEXT,
+                leak_date TEXT,
+                found_date DATETIME DEFAULT CURRENT_TIMESTAMP
+            )''',
+            
+            '''CREATE TABLE IF NOT EXISTS addresses_documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                document_number TEXT,
+                document_type TEXT,
+                full_name TEXT,
+                home_address TEXT,
+                work_address TEXT,
+                city TEXT,
+                country TEXT,
+                phone TEXT,
+                email TEXT,
+                source TEXT,
+                found_date DATETIME DEFAULT CURRENT_TIMESTAMP
+            )'''
+        ]
         
         for sql in tables_sql:
-            await self.execute(sql)
+            try:
+                await self.execute(sql)
+            except Exception as e:
+                logger.error(f"Errore creazione tabella: {e}")
         
-        logger.info("✅ Tabelle inizializzate")
-    
-    async def close(self):
-        if self.client:
-            await self.client.close()         
-            # Parametri base
-            kwargs = {"url": self.db_url}
-            
-            # Aggiungi auth_token SOLO se l'URL è remoto (libsql://) e il token esiste
-            if self.db_url.startswith('libsql://') and self.auth_token:
-
+        logger.info("✅ Tabelle database inizializzate")
+        
 # Istanza globale del database
 db = TursoDatabase()
 
