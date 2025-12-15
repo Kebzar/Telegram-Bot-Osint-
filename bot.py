@@ -225,7 +225,7 @@ TURSO_AUTH_TOKEN = os.environ.get('TURSO_AUTH_TOKEN')
 
 if TURSO_DATABASE_URL and TURSO_AUTH_TOKEN:
     # Connessione sincrona a Turso remoto
-    conn = libsqlConnection(url=TURSO_DATABASE_URL, auth_token=TURSO_AUTH_TOKEN)
+    conn = libsqlconnection(url=TURSO_DATABASE_URL, auth_token=TURSO_AUTH_TOKEN)
     c = conn.cursor()  # Cursor compatibile con sqlite3
     logger.info("✅ Connesso a Turso remoto con successo!")
 else:
