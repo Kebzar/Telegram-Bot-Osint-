@@ -219,7 +219,7 @@ translations = {
 
 # ==================== CLIENT TURSO ASINCRONO ====================
 class TursoDatabase:
-    """Cliente asincrono per Turso (libSQL) - Versione ufficiale aggiornata"""
+    """Cliente asincrono per Turso (libSQL) - Compatibile con versione attuale libsql-client"""
     
     def __init__(self):
         self.db_url = os.environ.get('TURSO_DB_URL', '')
@@ -236,10 +236,10 @@ class TursoDatabase:
             
             import libsql_client
             
-            # Crea il client asincrono (funziona sia per remoto che locale)
-            self.client = libsql_client.create_client(
+            # Crea il client direttamente con Client(...)
+            self.client = libsql_client.Client(
                 url=self.db_url,
-                auth_token=self.auth_token if self.db_url.startswith('libsql://') else None
+                auth_token=self.auth_token  # None se locale o non necessario
             )
             
             logger.info("✅ Connesso a Turso (libSQL)")
@@ -262,9 +262,7 @@ class TursoDatabase:
             if not self.client:
                 await self.connect()
             
-            # Usa context manager per ogni execute (best practice)
-            async with self.client as client:
-                result = await client.execute(sql, params)
+            result = await self.client.execute(sql, params)
             return result
         except Exception as e:
             logger.error(f"❌ Errore esecuzione query: {e}\nSQL: {sql}\nParams: {params}")
