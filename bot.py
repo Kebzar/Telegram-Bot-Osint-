@@ -34,7 +34,7 @@ from telegram.ext import (
 )
 
 # ==================== INTEGRAZIONE TURSO (libSQL) ====================
-from libsql_client import libsql_client
+import libsql_client
 
 # Configurazione logging
 logging.basicConfig(
