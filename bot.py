@@ -251,7 +251,6 @@ else:
             execute_query(sql, params)
 
 else:
-    # Fallback locale solo per test su PC
     import sqlite3
     conn = sqlite3.connect('leakosint_bot.db', check_same_thread=False)
     c = conn.cursor()
