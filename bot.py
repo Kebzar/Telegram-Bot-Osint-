@@ -22,7 +22,7 @@ from bs4 import BeautifulSoup
 import shodan
 from flask import Flask, request
 import os
-from libsql_experimental import create_client
+from libsql_experimental import libsql_experimental
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
