@@ -33,7 +33,15 @@ from telegram.ext import (
     ConversationHandler
 )
 
-# ==================== INTEGRAZIONE TURSO (libSQL) ====================
+# Import per Turso/libSQL
+try:
+    import libsql_client
+    from libsql_client import Client
+    TURSO_ENABLED = True
+except ImportError:
+    # Fallback per sviluppo locale
+    TURSO_ENABLED = False
+    import sqlite3
 
 # Configurazione logging
 logging.basicConfig(
@@ -49,6 +57,10 @@ if not BOT_TOKEN:
     sys.exit(1)
 
 ADMIN_ID = int(os.environ.get('ADMIN_ID', 0))
+
+# Configurazione Turso Database
+TURSO_DB_URL = os.environ.get('TURSO_DB_URL')
+TURSO_DB_AUTH_TOKEN = os.environ.get('TURSO_DB_AUTH_TOKEN')
 
 # API Keys REALI (sostituire con le tue)
 SHODAN_API_KEY = os.environ.get('SHODAN_API_KEY', '')
@@ -198,7 +210,7 @@ translations = {
         'support': '📞 SUPPORT:',
         
         # Menu completo
-        'menu_title': '📝 COMPOSITE SEARCHE SUPPORTED:',
+        'menu_title': '📝 COMPOSITE SEARCHES SUPPORTED:',
         'composite_examples': '📌 Composite search examples:',
         'combine_what': '🔍 YOU CAN COMBINE:',
         'mass_search': '📋 MASS SEARCH:',
@@ -216,67 +228,269 @@ translations = {
     }
 }
 
-# ==================== CLIENT TURSO REMOTO UFFICIALE ====================
-class TursoDatabase:
+# ==================== DATABASE MANAGER PER TURSO ====================
+
+class DatabaseManager:
+    """Gestione database per Turso/libSQL"""
+    
     def __init__(self):
-        self.db_url = os.environ.get('TURSO_DB_URL', '')
-        self.auth_token = os.environ.get('TURSO_AUTH_TOKEN', '')
         self.client = None
-        logger.info(f"Turso config: URL={self.db_url[:50]}... Token={'Sì' if self.auth_token else 'No'}")
-    
-    async def connect(self):
+        self.is_initialized = False
+        
+    async def initialize(self):
+        """Inizializza la connessione al database"""
         try:
-            if not self.db_url or not self.auth_token:
-                logger.error("❌ TURSO_DB_URL o TURSO_AUTH_TOKEN non configurati!")
-                raise ValueError("TURSO_DB_URL e TURSO_AUTH_TOKEN obbligatori")
-            
-            import libsql_client
-            
-            # Client sincrono per remoto puro
-            self.client = libsql_client.create_client_sync(
-                url=self.db_url,
-                auth_token=self.auth_token
-            )
-            
-            logger.info("✅ Connesso a Turso (remoto puro)")
-            await self.initialize_tables()
+            if TURSO_ENABLED and TURSO_DB_URL and TURSO_DB_AUTH_TOKEN:
+                logger.info("🔗 Connessione a Turso Database...")
+                self.client = Client(
+                    url=TURSO_DB_URL,
+                    auth_token=TURSO_DB_AUTH_TOKEN
+                )
+                logger.info("✅ Connessione Turso stabilita")
+            else:
+                # Fallback a SQLite locale
+                logger.warning("⚠️ Turso non configurato, uso SQLite locale")
+                import sqlite3
+                self.client = sqlite3.connect(':memory:', check_same_thread=False)
+                self.client.row_factory = sqlite3.Row
+                TURSO_ENABLED = False
+                
+            await self.create_tables()
+            self.is_initialized = True
+            return True
         except Exception as e:
-            logger.error(f"❌ Errore connessione Turso: {e}")
+            logger.error(f"❌ Errore inizializzazione database: {e}")
+            # Fallback di emergenza
+            import sqlite3
+            self.client = sqlite3.connect(':memory:', check_same_thread=False)
+            self.client.row_factory = sqlite3.Row
+            await self.create_tables()
+            self.is_initialized = True
+            return True
+    
+    async def create_tables(self):
+        """Crea le tabelle nel database"""
+        try:
+            if TURSO_ENABLED:
+                # Per Turso/libSQL
+                await self.execute('''CREATE TABLE IF NOT EXISTS users (
+                    user_id INTEGER PRIMARY KEY,
+                    username TEXT,
+                    balance INTEGER DEFAULT 4,
+                    searches INTEGER DEFAULT 0,
+                    registration_date TEXT DEFAULT CURRENT_TIMESTAMP,
+                    subscription_type TEXT DEFAULT 'free',
+                    last_active TEXT DEFAULT CURRENT_TIMESTAMP,
+                    language TEXT DEFAULT 'en'
+                )''')
+                
+                await self.execute('''CREATE TABLE IF NOT EXISTS searches (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    query TEXT,
+                    type TEXT,
+                    results TEXT,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                )''')
+                
+                await self.execute('''CREATE TABLE IF NOT EXISTS breach_data (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email TEXT,
+                    phone TEXT,
+                    name TEXT,
+                    surname TEXT,
+                    username TEXT,
+                    password TEXT,
+                    hash TEXT,
+                    source TEXT,
+                    breach_name TEXT,
+                    breach_date TEXT,
+                    found_date DATETIME DEFAULT CURRENT_TIMESTAMP
+                )''')
+                
+                await self.execute('''CREATE TABLE IF NOT EXISTS facebook_leaks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    phone TEXT,
+                    facebook_id TEXT,
+                    name TEXT,
+                    surname TEXT,
+                    gender TEXT,
+                    birth_date TEXT,
+                    city TEXT,
+                    country TEXT,
+                    company TEXT,
+                    relationship_status TEXT,
+                    leak_date TEXT,
+                    found_date DATETIME DEFAULT CURRENT_TIMESTAMP
+                )''')
+                
+                await self.execute('''CREATE TABLE IF NOT EXISTS addresses_documents (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    document_number TEXT,
+                    document_type TEXT,
+                    full_name TEXT,
+                    home_address TEXT,
+                    work_address TEXT,
+                    city TEXT,
+                    country TEXT,
+                    phone TEXT,
+                    email TEXT,
+                    source TEXT,
+                    found_date DATETIME DEFAULT CURRENT_TIMESTAMP
+                )''')
+                
+            else:
+                # Per SQLite
+                cursor = self.client.cursor()
+                cursor.execute('''CREATE TABLE IF NOT EXISTS users (
+                    user_id INTEGER PRIMARY KEY,
+                    username TEXT,
+                    balance INTEGER DEFAULT 4,
+                    searches INTEGER DEFAULT 0,
+                    registration_date TEXT DEFAULT CURRENT_TIMESTAMP,
+                    subscription_type TEXT DEFAULT 'free',
+                    last_active TEXT DEFAULT CURRENT_TIMESTAMP,
+                    language TEXT DEFAULT 'en'
+                )''')
+                
+                cursor.execute('''CREATE TABLE IF NOT EXISTS searches (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    query TEXT,
+                    type TEXT,
+                    results TEXT,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                )''')
+                
+                cursor.execute('''CREATE TABLE IF NOT EXISTS breach_data (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email TEXT,
+                    phone TEXT,
+                    name TEXT,
+                    surname TEXT,
+                    username TEXT,
+                    password TEXT,
+                    hash TEXT,
+                    source TEXT,
+                    breach_name TEXT,
+                    breach_date TEXT,
+                    found_date DATETIME DEFAULT CURRENT_TIMESTAMP
+                )''')
+                
+                cursor.execute('''CREATE TABLE IF NOT EXISTS facebook_leaks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    phone TEXT,
+                    facebook_id TEXT,
+                    name TEXT,
+                    surname TEXT,
+                    gender TEXT,
+                    birth_date TEXT,
+                    city TEXT,
+                    country TEXT,
+                    company TEXT,
+                    relationship_status TEXT,
+                    leak_date TEXT,
+                    found_date DATETIME DEFAULT CURRENT_TIMESTAMP
+                )''')
+                
+                cursor.execute('''CREATE TABLE IF NOT EXISTS addresses_documents (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    document_number TEXT,
+                    document_type TEXT,
+                    full_name TEXT,
+                    home_address TEXT,
+                    work_address TEXT,
+                    city TEXT,
+                    country TEXT,
+                    phone TEXT,
+                    email TEXT,
+                    source TEXT,
+                    found_date DATETIME DEFAULT CURRENT_TIMESTAMP
+                )''')
+                
+                self.client.commit()
+            
+            logger.info("✅ Tabelle database create/verificate")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Errore creazione tabelle: {e}")
+            return False
+    
+    async def execute(self, query: str, params: tuple = None):
+        """Esegue una query sul database"""
+        try:
+            if TURSO_ENABLED and self.client:
+                if params:
+                    result = await self.client.execute(query, params)
+                else:
+                    result = await self.client.execute(query)
+                return result
+            else:
+                # SQLite fallback
+                cursor = self.client.cursor()
+                if params:
+                    cursor.execute(query, params)
+                else:
+                    cursor.execute(query)
+                self.client.commit()
+                return cursor
+        except Exception as e:
+            logger.error(f"❌ Errore esecuzione query: {e}")
             raise
     
-    async def execute(self, sql: str, params: tuple = ()):
+    async def fetchone(self, query: str, params: tuple = None):
+        """Esegue una query e restituisce una riga"""
         try:
-            if not self.client:
-                await self.connect()
-            
-            # Execute sincrono (il client remoto è sync)
-            result = self.client.execute(sql, params or ())
-            return result
+            if TURSO_ENABLED and self.client:
+                if params:
+                    result = await self.client.execute(query, params)
+                else:
+                    result = await self.client.execute(query)
+                return result.rows[0] if result.rows else None
+            else:
+                cursor = self.client.cursor()
+                if params:
+                    cursor.execute(query, params)
+                else:
+                    cursor.execute(query)
+                return cursor.fetchone()
         except Exception as e:
-            logger.error(f"❌ Errore esecuzione query: {e}\nSQL: {sql}\nParams: {params}")
-            raise
+            logger.error(f"❌ Errore fetchone: {e}")
+            return None
     
-    async def fetch_one(self, sql: str, params: tuple = ()):
-        result = await self.execute(sql, params)
-        return result.rows[0] if result.rows else None
-    
-    async def fetch_all(self, sql: str, params: tuple = ()):
-        result = await self.execute(sql, params)
-        return result.rows
-    
-    async def initialize_tables(self):
-        # Le tue CREATE TABLE (identiche)
-        # ...
-        logger.info("✅ Tabelle inizializzate")
+    async def fetchall(self, query: str, params: tuple = None):
+        """Esegue una query e restituisce tutte le righe"""
+        try:
+            if TURSO_ENABLED and self.client:
+                if params:
+                    result = await self.client.execute(query, params)
+                else:
+                    result = await self.client.execute(query)
+                return result.rows
+            else:
+                cursor = self.client.cursor()
+                if params:
+                    cursor.execute(query, params)
+                else:
+                    cursor.execute(query)
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"❌ Errore fetchall: {e}")
+            return []
     
     async def close(self):
-        if self.client:
-            self.client.close()
-            logger.info("✅ Disconnesso da Turso")
-                      
-        
-# Istanza globale del database
-db = TursoDatabase()
+        """Chiude la connessione al database"""
+        try:
+            if TURSO_ENABLED and self.client:
+                await self.client.close()
+            elif self.client:
+                self.client.close()
+        except Exception as e:
+            logger.error(f"Errore chiusura database: {e}")
+
+# Istanza globale del database manager
+db = DatabaseManager()
 
 # ==================== CLASSI PRINCIPALI ====================
 
@@ -291,7 +505,7 @@ class LeakSearchAPI:
     
     def is_email(self, text: str) -> bool:
         """Verifica se il testo è un'email"""
-        pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0.9.-]+\.[a-zA-Z]{2,}$'
+        pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
         return bool(re.match(pattern, text))
     
     def is_phone(self, text: str) -> bool:
@@ -372,26 +586,23 @@ class LeakSearchAPI:
             except Exception as e:
                 logger.error(f"Dehashed document error: {e}")
         
-        # Ricerca nel database Turso
-        try:
-            db_results = await db.fetch_all('''SELECT * FROM addresses_documents WHERE 
+        # Ricerca nel database locale
+        db_results = await db.fetchall('''SELECT * FROM addresses_documents WHERE 
                     document_number LIKE ? OR document_number = ? LIMIT 10''',
                  (f'%{doc_clean}%', doc_clean))
-            
-            for row in db_results:
-                results.append({
-                    'source': 'Turso Database',
-                    'document_type': row[2],
-                    'document_number': row[1],
-                    'full_name': row[3],
-                    'home_address': row[4],
-                    'work_address': row[5],
-                    'city': row[6],
-                    'phone': row[8],
-                    'email': row[9]
-                })
-        except Exception as e:
-            logger.error(f"Turso document search error: {e}")
+        
+        for row in db_results:
+            results.append({
+                'source': 'Local Database',
+                'document_type': row[2],
+                'document_number': row[1],
+                'full_name': row[3],
+                'home_address': row[4],
+                'work_address': row[5],
+                'city': row[6],
+                'phone': row[8],
+                'email': row[9]
+            })
         
         if SNUSBASE_API_KEY:
             try:
@@ -449,45 +660,38 @@ class LeakSearchAPI:
             except Exception as e:
                 logger.error(f"Dehashed home address error: {e}")
         
-        # Ricerca nel database Turso
-        try:
-            db_results = await db.fetch_all('''SELECT * FROM addresses_documents WHERE 
+        db_results = await db.fetchall('''SELECT * FROM addresses_documents WHERE 
                     home_address LIKE ? OR address LIKE ? LIMIT 10''',
                  (f'%{address_clean}%', f'%{address_clean}%'))
-            
-            for row in db_results:
-                if row[4]:
-                    results.append({
-                        'source': 'Turso Database',
-                        'address_type': 'home',
-                        'address': row[4],
-                        'full_name': row[3],
-                        'document_number': row[1],
-                        'city': row[6],
-                        'phone': row[8],
-                        'email': row[9]
-                    })
-        except Exception as e:
-            logger.error(f"Turso home address error: {e}")
         
-        try:
-            fb_results = await db.fetch_all('''SELECT * FROM facebook_leaks WHERE 
+        for row in db_results:
+            if row[4]:
+                results.append({
+                    'source': 'Local Database',
+                    'address_type': 'home',
+                    'address': row[4],
+                    'full_name': row[3],
+                    'document_number': row[1],
+                    'city': row[6],
+                    'phone': row[8],
+                    'email': row[9]
+                })
+        
+        fb_results = await db.fetchall('''SELECT * FROM facebook_leaks WHERE 
                     city LIKE ? OR country LIKE ? LIMIT 10''',
                  (f'%{address_clean}%', f'%{address_clean}%'))
-            
-            for row in fb_results:
-                results.append({
-                    'source': 'Facebook Leak 2021',
-                    'address_type': 'city/country',
-                    'city': row[7],
-                    'country': row[8],
-                    'full_name': f"{row[3]} {row[4]}",
-                    'phone': row[1],
-                    'facebook_id': row[2],
-                    'company': row[9]
-                })
-        except Exception as e:
-            logger.error(f"Turso Facebook address error: {e}")
+        
+        for row in fb_results:
+            results.append({
+                'source': 'Facebook Leak 2021',
+                'address_type': 'city/country',
+                'city': row[7],
+                'country': row[8],
+                'full_name': f"{row[3]} {row[4]}",
+                'phone': row[1],
+                'facebook_id': row[2],
+                'company': row[9]
+            })
         
         return {'found': len(results) > 0, 'results': results, 'count': len(results)}
     
@@ -523,47 +727,40 @@ class LeakSearchAPI:
             except Exception as e:
                 logger.error(f"Dehashed work address error: {e}")
         
-        # Ricerca nel database Turso
-        try:
-            db_results = await db.fetch_all('''SELECT * FROM addresses_documents WHERE 
+        db_results = await db.fetchall('''SELECT * FROM addresses_documents WHERE 
                     work_address LIKE ? OR company LIKE ? LIMIT 10''',
                  (f'%{address_clean}%', f'%{address_clean}%'))
-            
-            for row in db_results:
-                if row[5]:
-                    results.append({
-                        'source': 'Turso Database',
-                        'address_type': 'work',
-                        'company': row[10] if len(row) > 10 else None,
-                        'address': row[5],
-                        'full_name': row[3],
-                        'document_number': row[1],
-                        'city': row[6],
-                        'phone': row[8],
-                        'email': row[9]
-                    })
-        except Exception as e:
-            logger.error(f"Turso work address error: {e}")
         
-        try:
-            fb_results = await db.fetch_all('''SELECT * FROM facebook_leaks WHERE 
+        for row in db_results:
+            if row[5]:
+                results.append({
+                    'source': 'Local Database',
+                    'address_type': 'work',
+                    'company': row[10] if len(row) > 10 else None,
+                    'address': row[5],
+                    'full_name': row[3],
+                    'document_number': row[1],
+                    'city': row[6],
+                    'phone': row[8],
+                    'email': row[9]
+                })
+        
+        fb_results = await db.fetchall('''SELECT * FROM facebook_leaks WHERE 
                     company LIKE ? LIMIT 10''',
                  (f'%{address_clean}%',))
-            
-            for row in fb_results:
-                if row[9]:
-                    results.append({
-                        'source': 'Facebook Leak 2021',
-                        'address_type': 'company',
-                        'company': row[9],
-                        'full_name': f"{row[3]} {row[4]}",
-                        'phone': row[1],
-                        'facebook_id': row[2],
-                        'city': row[7],
-                        'country': row[8]
-                    })
-        except Exception as e:
-            logger.error(f"Turso Facebook company error: {e}")
+        
+        for row in fb_results:
+            if row[9]:
+                results.append({
+                    'source': 'Facebook Leak 2021',
+                    'address_type': 'company',
+                    'company': row[9],
+                    'full_name': f"{row[3]} {row[4]}",
+                    'phone': row[1],
+                    'facebook_id': row[2],
+                    'city': row[7],
+                    'country': row[8]
+                })
         
         if HUNTER_API_KEY:
             try:
@@ -688,25 +885,21 @@ class LeakSearchAPI:
             except Exception as e:
                 logger.error(f"Dehashed phone error: {e}")
         
-        # Ricerca nel database Turso
-        try:
-            db_results = await db.fetch_all('''SELECT * FROM facebook_leaks WHERE phone LIKE ? LIMIT 10''',
+        db_results = await db.fetchall('''SELECT * FROM facebook_leaks WHERE phone LIKE ? LIMIT 10''',
                  (f'%{phone_clean[-10:]}%',))
-            
-            for row in db_results:
-                results.append({
-                    'source': 'Facebook Leak 2021',
-                    'phone': row[1],
-                    'facebook_id': row[2],
-                    'name': f"{row[3]} {row[4]}",
-                    'gender': row[5],
-                    'birth_date': row[6],
-                    'city': row[7],
-                    'country': row[8],
-                    'company': row[9]
-                })
-        except Exception as e:
-            logger.error(f"Turso phone search error: {e}")
+        
+        for row in db_results:
+            results.append({
+                'source': 'Facebook Leak 2021',
+                'phone': row[1],
+                'facebook_id': row[2],
+                'name': f"{row[3]} {row[4]}",
+                'gender': row[5],
+                'birth_date': row[6],
+                'city': row[7],
+                'country': row[8],
+                'company': row[9]
+            })
         
         if LEAKCHECK_API_KEY:
             try:
@@ -955,26 +1148,22 @@ class LeakSearchAPI:
         if len(parts) >= 2:
             first_name, last_name = parts[0], parts[1]
             
-            # Ricerca nel database Turso
-            try:
-                db_results = await db.fetch_all('''SELECT * FROM facebook_leaks WHERE 
-                            (name LIKE ? OR surname LIKE ?) LIMIT 15''',
-                         (f'%{first_name}%', f'%{last_name}%'))
-                
-                for row in db_results:
-                    results.append({
-                        'source': 'Facebook Leak 2021',
-                        'phone': row[1],
-                        'facebook_id': row[2],
-                        'name': f"{row[3]} {row[4]}",
-                        'gender': row[5],
-                        'birth_date': row[6],
-                        'city': row[7],
-                        'country': row[8],
-                        'company': row[9]
-                    })
-            except Exception as e:
-                logger.error(f"Turso name search error: {e}")
+            db_results = await db.fetchall('''SELECT * FROM facebook_leaks WHERE 
+                        (name LIKE ? OR surname LIKE ?) LIMIT 15''',
+                     (f'%{first_name}%', f'%{last_name}%'))
+            
+            for row in db_results:
+                results.append({
+                    'source': 'Facebook Leak 2021',
+                    'phone': row[1],
+                    'facebook_id': row[2],
+                    'name': f"{row[3]} {row[4]}",
+                    'gender': row[5],
+                    'birth_date': row[6],
+                    'city': row[7],
+                    'country': row[8],
+                    'company': row[9]
+                })
         
         return {'found': len(results) > 0, 'results': results, 'count': len(results)}
     
@@ -1303,28 +1492,24 @@ class LeakSearchAPI:
             'search_engines': []
         }
         
-        # Ricerca nel database Turso
-        try:
-            db_results = await db.fetch_all('''SELECT * FROM facebook_leaks WHERE 
-                        name LIKE ? OR surname LIKE ? OR phone LIKE ? 
-                        ORDER BY found_date DESC LIMIT 10''',
-                     (f'%{query}%', f'%{query}%', f'%{query}%'))
-            
-            for row in db_results:
-                results['leak_data'].append({
-                    'type': 'facebook_leak_2021',
-                    'phone': row[1],
-                    'facebook_id': row[2],
-                    'full_name': f"{row[3]} {row[4]}",
-                    'gender': row[5],
-                    'birth_date': row[6],
-                    'city': row[7],
-                    'country': row[8],
-                    'company': row[9],
-                    'leak_date': row[11]
-                })
-        except Exception as e:
-            logger.error(f"Turso Facebook advanced search error: {e}")
+        db_results = await db.fetchall('''SELECT * FROM facebook_leaks WHERE 
+                    name LIKE ? OR surname LIKE ? OR phone LIKE ? 
+                    ORDER BY found_date DESC LIMIT 10''',
+                 (f'%{query}%', f'%{query}%', f'%{query}%'))
+        
+        for row in db_results:
+            results['leak_data'].append({
+                'type': 'facebook_leak_2021',
+                'phone': row[1],
+                'facebook_id': row[2],
+                'full_name': f"{row[3]} {row[4]}",
+                'gender': row[5],
+                'birth_date': row[6],
+                'city': row[7],
+                'country': row[8],
+                'company': row[9],
+                'leak_date': row[11]
+            })
         
         if FACEBOOK_GRAPH_API_KEY and ' ' in query:
             try:
@@ -1410,27 +1595,23 @@ class LeakSearchAPI:
         results = []
         phone_clean = re.sub(r'[^\d+]', '', phone)[-10:]
         
-        # Ricerca nel database Turso
-        try:
-            db_results = await db.fetch_all('''SELECT * FROM facebook_leaks WHERE phone LIKE ? ORDER BY found_date DESC LIMIT 15''',
-                     (f'%{phone_clean}%',))
-            
-            for row in db_results:
-                results.append({
-                    'source': 'Facebook Leak 2021',
-                    'phone': row[1],
-                    'facebook_id': row[2],
-                    'name': f"{row[3]} {row[4]}",
-                    'gender': row[5],
-                    'birth_date': row[6],
-                    'city': row[7],
-                    'country': row[8],
-                    'company': row[9],
-                    'relationship_status': row[10],
-                    'leak_date': row[11]
-                })
-        except Exception as e:
-            logger.error(f"Turso Facebook phone search error: {e}")
+        db_results = await db.fetchall('''SELECT * FROM facebook_leaks WHERE phone LIKE ? ORDER BY found_date DESC LIMIT 15''',
+                 (f'%{phone_clean}%',))
+        
+        for row in db_results:
+            results.append({
+                'source': 'Facebook Leak 2021',
+                'phone': row[1],
+                'facebook_id': row[2],
+                'name': f"{row[3]} {row[4]}",
+                'gender': row[5],
+                'birth_date': row[6],
+                'city': row[7],
+                'country': row[8],
+                'company': row[9],
+                'relationship_status': row[10],
+                'leak_date': row[11]
+            })
         
         if SNUSBASE_API_KEY:
             try:
@@ -1515,23 +1696,19 @@ class LeakSearchAPI:
         results = []
         
         if fb_id.isdigit():
-            # Ricerca nel database Turso
-            try:
-                db_results = await db.fetch_all('''SELECT * FROM facebook_leaks WHERE facebook_id = ?''', (fb_id,))
-                
-                for row in db_results:
-                    results.append({
-                        'source': 'Facebook Leak 2021',
-                        'facebook_id': row[2],
-                        'name': f"{row[3]} {row[4]}",
-                        'phone': row[1],
-                        'gender': row[5],
-                        'birth_date': row[6],
-                        'city': row[7],
-                        'country': row[8]
-                    })
-            except Exception as e:
-                logger.error(f"Turso Facebook ID search error: {e}")
+            db_results = await db.fetchall('''SELECT * FROM facebook_leaks WHERE facebook_id = ?''', (fb_id,))
+            
+            for row in db_results:
+                results.append({
+                    'source': 'Facebook Leak 2021',
+                    'facebook_id': row[2],
+                    'name': f"{row[3]} {row[4]}",
+                    'phone': row[1],
+                    'gender': row[5],
+                    'birth_date': row[6],
+                    'city': row[7],
+                    'country': row[8]
+                })
             
             try:
                 profile_url = f'https://facebook.com/{fb_id}'
@@ -1561,8 +1738,13 @@ class LeakosintBot:
         self.api = LeakSearchAPI()
     
     async def get_user_language(self, user_id: int) -> str:
-        result = await db.fetch_one('SELECT language FROM users WHERE user_id = ?', (user_id,))
-        return result[0] if result and result[0] else 'en'  # Default a 'en'
+        result = await db.fetchone('SELECT language FROM users WHERE user_id = ?', (user_id,))
+        if result:
+            if TURSO_ENABLED:
+                return result[0] if result[0] else 'en'
+            else:
+                return result[0] if result and result[0] else 'en'
+        return 'en'  # Default a 'en'
     
     async def set_user_language(self, user_id: int, language: str):
         await db.execute('UPDATE users SET language = ? WHERE user_id = ?', (language, user_id))
@@ -1604,7 +1786,7 @@ class LeakosintBot:
     
     async def register_user(self, user_id: int, username: str):
         """Registra un nuovo utente"""
-        result = await db.fetch_one('SELECT * FROM users WHERE user_id = ?', (user_id,))
+        result = await db.fetchone('SELECT * FROM users WHERE user_id = ?', (user_id,))
         if not result:
             await db.execute('''INSERT INTO users (user_id, username, balance) 
                        VALUES (?, ?, 4)''', (user_id, username))
@@ -1612,40 +1794,66 @@ class LeakosintBot:
         return False
     
     async def get_user_balance(self, user_id: int) -> int:
-        result = await db.fetch_one('SELECT balance FROM users WHERE user_id = ?', (user_id,))
-        return int(result[0]) if result else 0
+        result = await db.fetchone('SELECT balance FROM users WHERE user_id = ?', (user_id,))
+        if result:
+            if TURSO_ENABLED:
+                return int(result[0]) if result[0] else 0
+            else:
+                return int(result[0]) if result else 0
+        return 0
     
     async def get_user_searches(self, user_id: int) -> int:
-        result = await db.fetch_one('SELECT searches FROM users WHERE user_id = ?', (user_id,))
-        return result[0] if result else 0
+        result = await db.fetchone('SELECT searches FROM users WHERE user_id = ?', (user_id,))
+        if result:
+            if TURSO_ENABLED:
+                return result[0] if result[0] else 0
+            else:
+                return result[0] if result else 0
+        return 0
     
     async def get_registration_date(self, user_id: int) -> str:
-        result = await db.fetch_one('SELECT registration_date FROM users WHERE user_id = ?', (user_id,))
+        result = await db.fetchone('SELECT registration_date FROM users WHERE user_id = ?', (user_id,))
         if result and result[0]:
             try:
-                dt = datetime.strptime(result[0], '%Y-%m-%d %H:%M:%S')
+                if TURSO_ENABLED:
+                    dt = datetime.fromisoformat(result[0].replace('Z', '+00:00'))
+                else:
+                    dt = datetime.strptime(result[0], '%Y-%m-%d %H:%M:%S')
                 return dt.strftime('%d/%m/%Y')
             except:
-                return result[0]
+                return str(result[0])
         return "Sconosciuta"
     
     async def get_last_active(self, user_id: int) -> str:
-        result = await db.fetch_one('SELECT last_active FROM users WHERE user_id = ?', (user_id,))
+        result = await db.fetchone('SELECT last_active FROM users WHERE user_id = ?', (user_id,))
         if result and result[0]:
             try:
-                dt = datetime.strptime(result[0], '%Y-%m-%d %H:%M:%S')
+                if TURSO_ENABLED:
+                    dt = datetime.fromisoformat(result[0].replace('Z', '+00:00'))
+                else:
+                    dt = datetime.strptime(result[0], '%Y-%m-%d %H:%M:%S')
                 return dt.strftime('%d/%m/%Y %H:%M')
             except:
-                return result[0]
+                return str(result[0])
         return "Sconosciuta"
     
     async def get_subscription_type(self, user_id: int) -> str:
-        result = await db.fetch_one('SELECT subscription_type FROM users WHERE user_id = ?', (user_id,))
-        return result[0] if result else 'free'
+        result = await db.fetchone('SELECT subscription_type FROM users WHERE user_id = ?', (user_id,))
+        if result:
+            if TURSO_ENABLED:
+                return result[0] if result[0] else 'free'
+            else:
+                return result[0] if result else 'free'
+        return 'free'
     
     async def get_username(self, user_id: int) -> str:
-        result = await db.fetch_one('SELECT username FROM users WHERE user_id = ?', (user_id,))
-        return result[0] if result else 'N/A'
+        result = await db.fetchone('SELECT username FROM users WHERE user_id = ?', (user_id,))
+        if result:
+            if TURSO_ENABLED:
+                return result[0] if result[0] else 'N/A'
+            else:
+                return result[0] if result else 'N/A'
+        return 'N/A'
     
     async def update_balance(self, user_id: int, cost: int = 2) -> bool:
         current = await self.get_user_balance(user_id)
@@ -2212,7 +2420,6 @@ https://www.paypal.me/BotAi36
             await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
         else:
             await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-
     
     async def start(self, update: Update, context: CallbackContext):
         """Comando start - Mostra il menu principale con interfaccia"""
@@ -2602,43 +2809,34 @@ Errore: {str(e)[:100]}
             if components['emails'] and components['phones']:
                 for email in components['emails'][:1]:
                     for phone in components['phones'][:1]:
-                        try:
-                            count_result = await db.fetch_one('''SELECT COUNT(*) FROM breach_data WHERE 
-                                        (email = ? OR phone = ?) AND 
-                                        (email = ? OR phone = ?)''',
-                                     (email, email, phone, phone))
-                            count = count_result[0] if count_result else 0
-                            if count > 0:
-                                correlations.append(f"📧 {email} ↔ 📱 {phone}")
-                        except Exception as e:
-                            logger.error(f"Turso correlation error: {e}")
+                        result = await db.fetchone('''SELECT COUNT(*) FROM breach_data WHERE 
+                                    (email = ? OR phone = ?) AND 
+                                    (email = ? OR phone = ?)''',
+                                 (email, email, phone, phone))
+                        count = result[0] if result else 0
+                        if count > 0:
+                            correlations.append(f"📧 {email} ↔ 📱 {phone}")
             
             if components['names'] and components['phones']:
                 for name in components['names'][:1]:
                     for phone in components['phones'][:1]:
                         phone_clean = re.sub(r'[^\d+]', '', phone)[-10:]
-                        try:
-                            count_result = await db.fetch_one('''SELECT COUNT(*) FROM facebook_leaks WHERE 
-                                        phone LIKE ? AND (name LIKE ? OR surname LIKE ?)''',
-                                     (f'%{phone_clean}%', f'%{name[:5]}%', f'%{name[:5]}%'))
-                            count = count_result[0] if count_result else 0
-                            if count > 0:
-                                correlations.append(f"👤 {name[:15]}... ↔ 📱 {phone}")
-                        except Exception as e:
-                            logger.error(f"Turso Facebook correlation error: {e}")
+                        result = await db.fetchone('''SELECT COUNT(*) FROM facebook_leaks WHERE 
+                                    phone LIKE ? AND (name LIKE ? OR surname LIKE ?)''',
+                                 (f'%{phone_clean}%', f'%{name[:5]}%', f'%{name[:5]}%'))
+                        count = result[0] if result else 0
+                        if count > 0:
+                            correlations.append(f"👤 {name[:15]}... ↔ 📱 {phone}")
             
             if components['documents'] and components['names']:
                 for doc in components['documents'][:1]:
                     for name in components['names'][:1]:
-                        try:
-                            count_result = await db.fetch_one('''SELECT COUNT(*) FROM addresses_documents WHERE 
-                                        document_number LIKE ? AND full_name LIKE ?''',
-                                     (f'%{doc}%', f'%{name}%'))
-                            count = count_result[0] if count_result else 0
-                            if count > 0:
-                                correlations.append(f"📄 {doc} ↔ 👤 {name[:15]}...")
-                        except Exception as e:
-                            logger.error(f"Turso document correlation error: {e}")
+                        result = await db.fetchone('''SELECT COUNT(*) FROM addresses_documents WHERE 
+                                    document_number LIKE ? AND full_name LIKE ?''',
+                                 (f'%{doc}%', f'%{name}%'))
+                        count = result[0] if result else 0
+                        if count > 0:
+                            correlations.append(f"📄 {doc} ↔ 👤 {name[:15]}...")
             
             if correlations:
                 for corr in correlations[:3]:
@@ -3418,17 +3616,14 @@ Errore: {str(e)[:100]}
             await update.message.reply_text("❌ Accesso negato")
             return
         
-        try:
-            users_count = await db.fetch_one('SELECT COUNT(*) FROM users')
-            searches_count = await db.fetch_one('SELECT COUNT(*) FROM searches')
-            credits_count = await db.fetch_one('SELECT SUM(balance) FROM users')
-            
-            total_users = users_count[0] if users_count else 0
-            total_searches = searches_count[0] if searches_count else 0
-            total_credits = credits_count[0] if credits_count else 0
-        except Exception as e:
-            logger.error(f"Turso admin stats error: {e}")
-            total_users = total_searches = total_credits = 0
+        result = await db.fetchone('SELECT COUNT(*) FROM users')
+        total_users = result[0] if result else 0
+        
+        result = await db.fetchone('SELECT COUNT(*) FROM searches')
+        total_searches = result[0] if result else 0
+        
+        result = await db.fetchone('SELECT SUM(balance) FROM users')
+        total_credits = result[0] if result else 0
         
         now = datetime.now()
         mesi = {
@@ -3447,15 +3642,11 @@ Errore: {str(e)[:100]}
 
 👥 Ultimi 5 utenti:"""
         
-        try:
-            users = await db.fetch_all('SELECT user_id, username, balance, searches FROM users ORDER BY user_id DESC LIMIT 5')
-            
-            for user in users:
-                admin_text += f"\n\n- 👤 ID: {user[0]} | @{user[1] or 'N/A'}"
-                admin_text += f"\n  💎 Crediti: {user[2]} | 🔍 Ricerche: {user[3]}"
-        except Exception as e:
-            logger.error(f"Turso admin users error: {e}")
-            admin_text += f"\n\n❌ Errore nel caricamento utenti"
+        users = await db.fetchall('SELECT user_id, username, balance, searches FROM users ORDER BY user_id DESC LIMIT 5')
+        
+        for user in users:
+            admin_text += f"\n\n- 👤 ID: {user[0]} | @{user[1] or 'N/A'}"
+            admin_text += f"\n  💎 Crediti: {user[2]} | 🔍 Ricerche: {user[3]}"
         
         admin_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
         admin_text += f"\n\n{data_italiana}"
@@ -3481,7 +3672,7 @@ Errore: {str(e)[:100]}
             target_user_id = int(context.args[0])
             amount = int(context.args[1])
             
-            user = await db.fetch_one('SELECT * FROM users WHERE user_id = ?', (target_user_id,))
+            user = await db.fetchone('SELECT * FROM users WHERE user_id = ?', (target_user_id,))
             
             if not user:
                 await update.message.reply_text(f"❌ Utente {target_user_id} non trovato")
@@ -3490,8 +3681,8 @@ Errore: {str(e)[:100]}
             success = await self.add_credits(target_user_id, amount)
             
             if success:
-                new_balance_result = await db.fetch_one('SELECT balance FROM users WHERE user_id = ?', (target_user_id,))
-                new_balance = new_balance_result[0] if new_balance_result else 0
+                result = await db.fetchone('SELECT balance FROM users WHERE user_id = ?', (target_user_id,))
+                new_balance = result[0] if result else 0
                 
                 await update.message.reply_text(
                     f"✅ Aggiunti {amount} crediti all'utente {target_user_id}\n"
@@ -3925,10 +4116,22 @@ Query: {query}
             except:
                 await update.message.reply_text(error_text)
 
-# ==================== FUNZIONE PER CARICARE DATI FACEBOOK LEAKS ====================
+# ==================== FLASK APP PER RENDER ====================
+
+app = Flask(__name__)
+
+@app.route('/')
+def index():
+    return '🤖 LeakosintBot is running!'
+
+@app.route('/health')
+def health():
+    return 'OK', 200
+
+# ==================== FUNZIONI PER CARICARE DATI NEL DATABASE ====================
 
 async def load_facebook_leaks_data():
-    """Carica dati Facebook leaks nel database Turso"""
+    """Carica dati Facebook leaks nel database"""
     try:
         facebook_leaks_files = [
             'facebook_leaks.csv',
@@ -3961,10 +4164,8 @@ async def load_facebook_leaks_data():
         logger.error(f"Error loading Facebook leaks: {e}")
         return False
 
-# ==================== FUNZIONE PER CARICARE DATI DOCUMENTI E INDIRIZZI ====================
-
 async def load_addresses_documents_data():
-    """Carica dati documenti e indirizzi nel database Turso"""
+    """Carica dati documenti e indirizzi nel database"""
     try:
         addresses_files = [
             'addresses_documents.csv',
@@ -4015,24 +4216,12 @@ async def load_addresses_documents_data():
         logger.error(f"Error loading addresses/documents: {e}")
         return False
 
-# ==================== FLASK APP PER RENDER ====================
-
-app = Flask(__name__)
-
-@app.route('/')
-def index():
-    return '🤖 LeakosintBot is running!'
-
-@app.route('/health')
-def health():
-    return 'OK', 200
-
 # ==================== AVVIO BOT ====================
 
 async def setup_bot():
     """Configura il bot con tutti gli handler"""
-    logger.info("🔌 Connessione al database Turso...")
-    await db.connect()
+    logger.info("📥 Initializing database...")
+    await db.initialize()
     
     logger.info("📥 Loading Facebook leaks data...")
     await load_facebook_leaks_data()
@@ -4082,11 +4271,11 @@ def start_polling():
     application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 def start_webhook():
-    """Avvia il bot in modalità webhook (per Render) - VERSIONE SEMPLIFICATA"""
+    """Avvia il bot in modalità webhook (per Render)"""
     import asyncio
     import threading
     
-    # Avvia Flask in un thread separato su una porta diversa
+    # Avvia Flask in un thread separato
     def run_flask():
         flask_app = Flask(__name__)
         
@@ -4098,19 +4287,18 @@ def start_webhook():
         def health():
             return 'OK', 200
         
-        # Usa una porta diversa per Flask (non la porta principale di Render)
-        flask_port = 8080
-        flask_app.run(host='0.0.0.0', port=flask_port, debug=False, use_reloader=False, threaded=True)
+        port = int(os.environ.get('PORT', 8080))
+        flask_app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False, threaded=True)
     
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
-    logger.info("✅ Server Flask avviato sulla porta 8080")
+    logger.info(f"✅ Server Flask avviato sulla porta {os.environ.get('PORT', 8080)}")
     
     # Aspetta che Flask sia avviato
     import time
     time.sleep(3)
     
-    # Avvia il bot webhook sulla porta principale
+    # Avvia il bot webhook
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     
@@ -4120,33 +4308,32 @@ def start_webhook():
     webhook_url = os.environ.get('WEBHOOK_URL')
     
     if not webhook_url:
-        logger.error("❌ WEBHOOK_URL non configurata per Render")
-        sys.exit(1)
-    
-    webhook_url = webhook_url.rstrip('/')
-    
-    # LA PORTA PRINCIPALE è quella assegnata da Render
-    port = int(os.environ.get('PORT', 10000))
-    
-    logger.info(f"🚀 Avvio bot webhook su porta: {port}")
-    logger.info(f"🌐 Webhook URL: {webhook_url}/{BOT_TOKEN}")
-    
-    try:
-        # Avvia webhook sulla porta principale
+        # Per sviluppo locale
+        logger.info("🌐 Avvio webhook su localhost")
         application.run_webhook(
             listen="0.0.0.0",
-            port=port,
+            port=8443,
+            url_path=BOT_TOKEN,
+            webhook_url=f"https://localhost:8443/{BOT_TOKEN}",
+            drop_pending_updates=True
+        )
+    else:
+        # Per Render
+        webhook_url = webhook_url.rstrip('/')
+        logger.info(f"🚀 Avvio bot webhook su Render")
+        logger.info(f"🌐 Webhook URL: {webhook_url}/{BOT_TOKEN}")
+        
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=8443,
             url_path=BOT_TOKEN,
             webhook_url=f"{webhook_url}/{BOT_TOKEN}",
             drop_pending_updates=True
         )
-    except Exception as e:
-        logger.error(f"❌ Errore avvio webhook: {e}")
-        sys.exit(1)
 
 def main():
     """Funzione principale"""
-    if os.environ.get('RENDER'):
+    if os.environ.get('RENDER') or os.environ.get('WEBHOOK_URL'):
         logger.info("🎯 Modalità Render attivata")
         start_webhook()
     else:
