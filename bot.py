@@ -4167,6 +4167,24 @@ async def load_facebook_leaks_data():
 async def load_addresses_documents_data():
     """Carica dati documenti e indirizzi nel database"""
     try:
+        # PRIMA assicurati che la tabella esista
+        await db.execute('''CREATE TABLE IF NOT EXISTS addresses_documents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            document_number TEXT,
+            document_type TEXT,
+            full_name TEXT,
+            home_address TEXT,
+            work_address TEXT,
+            city TEXT,
+            country TEXT,
+            phone TEXT,
+            email TEXT,
+            source TEXT,
+            found_date DATETIME DEFAULT CURRENT_TIMESTAMP
+        )''')
+        
+        logger.info("✅ Tabella addresses_documents verificata/creata")
+        
         addresses_files = [
             'addresses_documents.csv',
             'data/addresses.csv',
@@ -4213,9 +4231,94 @@ async def load_addresses_documents_data():
         return True
         
     except Exception as e:
-        logger.error(f"Error loading addresses/documents: {e}")
+        logger.error(f"❌ Error loading addresses/documents: {e}")
         return False
 
+async def verify_database_tables():
+    """Verifica che tutte le tabelle esistano nel database"""
+    try:
+        tables = [
+            ('users', '''CREATE TABLE IF NOT EXISTS users (
+                user_id INTEGER PRIMARY KEY,
+                username TEXT,
+                balance INTEGER DEFAULT 4,
+                searches INTEGER DEFAULT 0,
+                registration_date TEXT DEFAULT CURRENT_TIMESTAMP,
+                subscription_type TEXT DEFAULT 'free',
+                last_active TEXT DEFAULT CURRENT_TIMESTAMP,
+                language TEXT DEFAULT 'en'
+            )'''),
+            
+            ('searches', '''CREATE TABLE IF NOT EXISTS searches (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                query TEXT,
+                type TEXT,
+                results TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )'''),
+            
+            ('breach_data', '''CREATE TABLE IF NOT EXISTS breach_data (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT,
+                phone TEXT,
+                name TEXT,
+                surname TEXT,
+                username TEXT,
+                password TEXT,
+                hash TEXT,
+                source TEXT,
+                breach_name TEXT,
+                breach_date TEXT,
+                found_date DATETIME DEFAULT CURRENT_TIMESTAMP
+            )'''),
+            
+            ('facebook_leaks', '''CREATE TABLE IF NOT EXISTS facebook_leaks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                phone TEXT,
+                facebook_id TEXT,
+                name TEXT,
+                surname TEXT,
+                gender TEXT,
+                birth_date TEXT,
+                city TEXT,
+                country TEXT,
+                company TEXT,
+                relationship_status TEXT,
+                leak_date TEXT,
+                found_date DATETIME DEFAULT CURRENT_TIMESTAMP
+            )'''),
+            
+            ('addresses_documents', '''CREATE TABLE IF NOT EXISTS addresses_documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                document_number TEXT,
+                document_type TEXT,
+                full_name TEXT,
+                home_address TEXT,
+                work_address TEXT,
+                city TEXT,
+                country TEXT,
+                phone TEXT,
+                email TEXT,
+                source TEXT,
+                found_date DATETIME DEFAULT CURRENT_TIMESTAMP
+            )''')
+        ]
+        
+        for table_name, create_sql in tables:
+            try:
+                await db.execute(create_sql)
+                logger.info(f"✅ Tabella {table_name} verificata/creata")
+            except Exception as e:
+                logger.error(f"❌ Errore creazione tabella {table_name}: {e}")
+        
+        logger.info("✅ Tutte le tabelle database verificate")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Errore verifica database: {e}")
+        return False
+        
 # ==================== AVVIO BOT ====================
 
 async def setup_bot():
@@ -4223,11 +4326,16 @@ async def setup_bot():
     logger.info("📥 Initializing database...")
     await db.initialize()
     
+    logger.info("🔍 Verificando tabelle database...")
+    await verify_database_tables()
+    
     logger.info("📥 Loading Facebook leaks data...")
     await load_facebook_leaks_data()
     
     logger.info("📥 Loading addresses/documents data...")
     await load_addresses_documents_data()
+    
+    # ... resto del codice ...
     
     application = Application.builder().token(BOT_TOKEN).build()
     
@@ -4305,18 +4413,19 @@ def start_webhook():
     application = loop.run_until_complete(setup_bot())
     
     # Configura webhook per Render
-    webhook_url = os.environ.get('WEBHOOK_URL')
+    render_service_name = os.environ.get('RENDER_SERVICE_NAME', 'telegram-bot-osint')
+    webhook_url = f"https://{render_service_name}.onrender.com"
     
-    if not webhook_url:
-        # Per sviluppo locale
-        logger.info("🌐 Avvio webhook su localhost")
-        application.run_webhook(
-            listen="0.0.0.0",
-            port=8443,
-            url_path=BOT_TOKEN,
-            webhook_url=f"https://localhost:8443/{BOT_TOKEN}",
-            drop_pending_updates=True
-        )
+    logger.info(f"🚀 Avvio bot webhook su Render")
+    logger.info(f"🌐 Webhook URL: {webhook_url}/{BOT_TOKEN}")
+    
+    application.run_webhook(
+        listen="0.0.0.0",
+        port=8443,
+        url_path=BOT_TOKEN,
+        webhook_url=f"{webhook_url}/{BOT_TOKEN}",
+        drop_pending_updates=True
+    )
     else:
         # Per Render
         webhook_url = webhook_url.rstrip('/')
