@@ -4427,7 +4427,6 @@ def start_webhook():
         drop_pending_updates=True
         )
     
-    else:
         webhook_url = webhook_url.rstrip('/')
         logger.info(f"🚀 Avvio bot webhook su Render")
         logger.info(f"🌐 Webhook URL: {webhook_url}/{BOT_TOKEN}")
