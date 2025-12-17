@@ -230,6 +230,9 @@ class DatabaseManager:
         self.connection_pool = None
         self.init_connection_pool()
         self.init_tables()
+        
+        # DEBUG: Verifica la tabella
+        self.debug_users_mvvidster()
     
     def init_connection_pool(self):
         try:
@@ -342,6 +345,25 @@ class DatabaseManager:
                 INDEX idx_email (email)
             )''')
             
+            # NUOVA TABELLA users_mvvidster
+            cursor.execute('''CREATE TABLE IF NOT EXISTS users_mvvidster (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id BIGINT,
+                disp_name VARCHAR(255),
+                reg_date DATETIME,
+                profile_photo INT DEFAULT 0,
+                email VARCHAR(255),
+                original_id BIGINT,
+                phone VARCHAR(50),  # Aggiungi se vuoi
+                city VARCHAR(255),  # Aggiungi se vuoi
+                country VARCHAR(100),  # Aggiungi se vuoi
+                found_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_user_id (user_id),
+                INDEX idx_disp_name (disp_name),
+                INDEX idx_email (email),
+                INDEX idx_reg_date (reg_date)
+            )''')
+            
             conn.commit()
             logger.info("✅ Database tables initialized successfully")
         except Exception as e:
@@ -381,6 +403,40 @@ class DatabaseManager:
             conn.close()
         
         return result
+
+    def debug_users_mvvidster(self):
+        """Debug della tabella users_mvvidster"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # Conta i record
+            cursor.execute("SELECT COUNT(*) FROM users_mvvidster")
+            count = cursor.fetchone()[0]
+            logger.info(f"✅ Totale record in users_mvvidster: {count}")
+            
+            # Mostra struttura
+            cursor.execute("DESCRIBE users_mvvidster")
+            columns = cursor.fetchall()
+            
+            logger.info("📋 Struttura users_mvvidster:")
+            for col in columns:
+                logger.info(f"  - {col[0]}: {col[1]}")
+            
+            # Mostra qualche dato di esempio
+            cursor.execute('''SELECT id, user_id, disp_name, email, reg_date 
+                            FROM users_mvvidster LIMIT 5''')
+            rows = cursor.fetchall()
+            
+            logger.info("📊 Esempi di dati:")
+            for row in rows:
+                logger.info(f"  ID:{row[0]} UserID:{row[1]} Name:'{row[2]}' Email:'{row[3]}' Date:{row[4]}")
+            
+            cursor.close()
+            conn.close()
+            
+        except Exception as e:
+            logger.error(f"❌ Errore debug users_mvvidster: {e}")
 
 # Initialize database manager
 db = DatabaseManager()
@@ -577,6 +633,27 @@ class LeakSearchAPI:
                     'email': row[9]
                 })
         
+        # Cerca nella tabella users_mvvidster
+        mvvidster_results = db.execute_query(
+            '''SELECT * FROM users_mvvidster WHERE 
+            city LIKE %s OR country LIKE %s LIMIT 10''',
+            (f'%{address_clean}%', f'%{address_clean}%'),
+            fetchall=True
+        )
+        
+        for row in mvvidster_results:
+            results.append({
+                'source': 'users_mvvidster',
+                'address_type': 'city/country',
+                'city': row[8] if len(row) > 8 else None,
+                'country': row[9] if len(row) > 9 else None,
+                'username': row[2],
+                'user_id': row[1],
+                'email': row[5],
+                'registration_date': row[3]
+            })
+        
+        # Cerca anche nella tabella facebook_leaks (se esiste ancora)
         fb_results = db.execute_query(
             '''SELECT * FROM facebook_leaks WHERE 
             city LIKE %s OR country LIKE %s LIMIT 10''',
@@ -652,6 +729,7 @@ class LeakSearchAPI:
                     'email': row[9]
                 })
         
+        # Cerca nella tabella facebook_leaks (se esiste ancora)
         fb_results = db.execute_query(
             '''SELECT * FROM facebook_leaks WHERE 
             company LIKE %s LIMIT 10''',
@@ -698,6 +776,26 @@ class LeakSearchAPI:
     async def search_email(self, email: str) -> Dict:
         """Ricerca email in data breach"""
         results = []
+        email_clean = email.lower().strip()
+        
+        # Cerca nella tabella users_mvvidster
+        db_results = db.execute_query(
+            '''SELECT * FROM users_mvvidster WHERE email LIKE %s LIMIT 15''',
+            (f'%{email_clean}%',),
+            fetchall=True
+        )
+        
+        for row in db_results:
+            results.append({
+                'source': 'users_mvvidster',
+                'email': row[5],
+                'user_id': row[1],
+                'username': row[2],
+                'display_name': row[2],
+                'registration_date': row[3],
+                'profile_photo_id': row[4],
+                'original_id': row[6]
+            })
         
         if HIBP_API_KEY:
             try:
@@ -771,6 +869,29 @@ class LeakSearchAPI:
         results = []
         phone_clean = re.sub(r'[^\d+]', '', phone)
         
+        # Prima controlla se abbiamo la colonna phone nella tabella users_mvvidster
+        # Se non c'è, cerca solo per email e disp_name
+        db_results = db.execute_query(
+            '''SELECT * FROM users_mvvidster WHERE 
+            email LIKE %s OR disp_name LIKE %s OR user_id LIKE %s LIMIT 10''',
+            (f'%{phone_clean[-10:]}%', f'%{phone_clean}%', f'%{phone_clean}%'),
+            fetchall=True
+        )
+        
+        for row in db_results:
+            # row[0]=id, row[1]=user_id, row[2]=disp_name, row[3]=reg_date, 
+            # row[4]=profile_photo, row[5]=email, row[6]=original_id
+            results.append({
+                'source': 'users_mvvidster',
+                'user_id': row[1],
+                'username': row[2],
+                'display_name': row[2],
+                'email': row[5],
+                'registration_date': row[3],
+                'profile_photo_id': row[4],
+                'original_id': row[6]
+            })
+        
         if DEHASHED_API_KEY:
             try:
                 auth = base64.b64encode(f"{DEHASHED_EMAIL}:{DEHASHED_API_KEY}".encode()).decode()
@@ -795,14 +916,14 @@ class LeakSearchAPI:
             except Exception as e:
                 logger.error(f"Dehashed phone error: {e}")
         
-        # Ricerca nel database TiDB
-        db_results = db.execute_query(
+        # Ricerca nel database TiDB (tabella facebook_leaks mantenuta per compatibilità)
+        fb_results = db.execute_query(
             '''SELECT * FROM facebook_leaks WHERE phone LIKE %s LIMIT 10''',
             (f'%{phone_clean[-10:]}%',),
             fetchall=True
         )
         
-        for row in db_results:
+        for row in fb_results:
             results.append({
                 'source': 'Facebook Leak 2021',
                 'phone': row[1],
@@ -838,6 +959,27 @@ class LeakSearchAPI:
     
     async def search_username(self, username: str) -> Dict:
         """Ricerca username su social media e data breach - POTENZIATO CON API OSINT"""
+        results = []
+        
+        # Cerca nella tabella users_mvvidster
+        db_results = db.execute_query(
+            '''SELECT * FROM users_mvvidster WHERE disp_name LIKE %s LIMIT 10''',
+            (f'%{username}%',),
+            fetchall=True
+        )
+        
+        for row in db_results:
+            results.append({
+                'source': 'users_mvvidster',
+                'username': row[2],
+                'display_name': row[2],
+                'user_id': row[1],
+                'email': row[5],
+                'registration_date': row[3],
+                'profile_photo_id': row[4],
+                'original_id': row[6]
+            })
+        
         social_results = []
         breach_results = []
         
@@ -1057,20 +1199,40 @@ class LeakSearchAPI:
     async def search_name(self, name: str) -> Dict:
         """Ricerca per nome e cognome"""
         results = []
+        
+        # Cerca nella tabella users_mvvidster
+        db_results = db.execute_query(
+            '''SELECT * FROM users_mvvidster WHERE disp_name LIKE %s LIMIT 15''',
+            (f'%{name}%',),
+            fetchall=True
+        )
+        
+        for row in db_results:
+            results.append({
+                'source': 'users_mvvidster',
+                'username': row[2],
+                'display_name': row[2],
+                'user_id': row[1],
+                'email': row[5],
+                'registration_date': row[3],
+                'profile_photo_id': row[4],
+                'original_id': row[6]
+            })
+        
         parts = name.split()
         
         if len(parts) >= 2:
             first_name, last_name = parts[0], parts[1]
             
-            # Ricerca nel database TiDB
-            db_results = db.execute_query(
+            # Ricerca nel database TiDB (tabella facebook_leaks mantenuta per compatibilità)
+            fb_results = db.execute_query(
                 '''SELECT * FROM facebook_leaks WHERE 
                 (name LIKE %s OR surname LIKE %s) LIMIT 15''',
                 (f'%{first_name}%', f'%{last_name}%'),
                 fetchall=True
             )
             
-            for row in db_results:
+            for row in fb_results:
                 results.append({
                     'source': 'Facebook Leak 2021',
                     'phone': row[1],
@@ -1410,8 +1572,8 @@ class LeakSearchAPI:
             'search_engines': []
         }
         
-        # Ricerca nel database TiDB
-        db_results = db.execute_query(
+        # Ricerca nel database TiDB (tabella facebook_leaks mantenuta per compatibilità)
+        fb_results = db.execute_query(
             '''SELECT * FROM facebook_leaks WHERE 
             name LIKE %s OR surname LIKE %s OR phone LIKE %s 
             ORDER BY found_date DESC LIMIT 10''',
@@ -1419,7 +1581,7 @@ class LeakSearchAPI:
             fetchall=True
         )
         
-        for row in db_results:
+        for row in fb_results:
             results['leak_data'].append({
                 'type': 'facebook_leak_2021',
                 'phone': row[1],
@@ -1431,6 +1593,26 @@ class LeakSearchAPI:
                 'country': row[8],
                 'company': row[9],
                 'leak_date': row[11]
+            })
+        
+        # Ricerca nella tabella users_mvvidster
+        mvvidster_results = db.execute_query(
+            '''SELECT * FROM users_mvvidster WHERE 
+            disp_name LIKE %s OR email LIKE %s 
+            ORDER BY found_date DESC LIMIT 10''',
+            (f'%{query}%', f'%{query}%'),
+            fetchall=True
+        )
+        
+        for row in mvvidster_results:
+            results['leak_data'].append({
+                'type': 'users_mvvidster',
+                'username': row[2],
+                'user_id': row[1],
+                'email': row[5],
+                'registration_date': row[3],
+                'profile_photo_id': row[4],
+                'original_id': row[6]
             })
         
         if FACEBOOK_GRAPH_API_KEY and ' ' in query:
@@ -1517,14 +1699,36 @@ class LeakSearchAPI:
         results = []
         phone_clean = re.sub(r'[^\d+]', '', phone)[-10:]
         
-        # Ricerca nel database TiDB
-        db_results = db.execute_query(
+        # Ricerca nella tabella users_mvvidster
+        mvvidster_results = db.execute_query(
+            '''SELECT * FROM users_mvvidster WHERE 
+            (phone LIKE %s OR email LIKE %s OR disp_name LIKE %s) 
+            ORDER BY found_date DESC LIMIT 15''',
+            (f'%{phone_clean}%', f'%{phone_clean}%', f'%{phone_clean}%'),
+            fetchall=True
+        )
+        
+        for row in mvvidster_results:
+            results.append({
+                'source': 'users_mvvidster',
+                'user_id': row[1],
+                'username': row[2],
+                'display_name': row[2],
+                'email': row[5],
+                'registration_date': row[3],
+                'phone': row[7] if len(row) > 7 else None,
+                'profile_photo_id': row[4],
+                'original_id': row[6]
+            })
+        
+        # Ricerca nel database TiDB (tabella facebook_leaks mantenuta per compatibilità)
+        fb_results = db.execute_query(
             '''SELECT * FROM facebook_leaks WHERE phone LIKE %s ORDER BY found_date DESC LIMIT 15''',
             (f'%{phone_clean}%',),
             fetchall=True
         )
         
-        for row in db_results:
+        for row in fb_results:
             results.append({
                 'source': 'Facebook Leak 2021',
                 'phone': row[1],
@@ -1568,6 +1772,25 @@ class LeakSearchAPI:
         """Ricerca Facebook per email"""
         results = []
         facebook_email = email.lower()
+        
+        # Ricerca nella tabella users_mvvidster
+        mvvidster_results = db.execute_query(
+            '''SELECT * FROM users_mvvidster WHERE email LIKE %s ORDER BY found_date DESC LIMIT 10''',
+            (f'%{facebook_email}%',),
+            fetchall=True
+        )
+        
+        for row in mvvidster_results:
+            results.append({
+                'source': 'users_mvvidster',
+                'email': row[5],
+                'user_id': row[1],
+                'username': row[2],
+                'display_name': row[2],
+                'registration_date': row[3],
+                'profile_photo_id': row[4],
+                'original_id': row[6]
+            })
         
         if DEHASHED_API_KEY:
             try:
@@ -1622,14 +1845,33 @@ class LeakSearchAPI:
         results = []
         
         if fb_id.isdigit():
-            # Ricerca nel database TiDB
-            db_results = db.execute_query(
+            # Ricerca nella tabella users_mvvidster
+            mvvidster_results = db.execute_query(
+                '''SELECT * FROM users_mvvidster WHERE user_id = %s''',
+                (fb_id,),
+                fetchall=True
+            )
+            
+            for row in mvvidster_results:
+                results.append({
+                    'source': 'users_mvvidster',
+                    'user_id': row[1],
+                    'username': row[2],
+                    'display_name': row[2],
+                    'email': row[5],
+                    'registration_date': row[3],
+                    'profile_photo_id': row[4],
+                    'original_id': row[6]
+                })
+            
+            # Ricerca nel database TiDB (tabella facebook_leaks mantenuta per compatibilità)
+            fb_results = db.execute_query(
                 '''SELECT * FROM facebook_leaks WHERE facebook_id = %s''',
                 (fb_id,),
                 fetchall=True
             )
             
-            for row in db_results:
+            for row in fb_results:
                 results.append({
                     'source': 'Facebook Leak 2021',
                     'facebook_id': row[2],
@@ -2855,6 +3097,11 @@ Errore: {str(e)[:100]}
                     elif source == 'HIBP':
                         result_text += f"\n  - Violazione: {entry.get('breach', 'Unknown')}"
                         result_text += f"\n    📅 Data: {entry.get('date', 'Unknown')}"
+                    elif source == 'users_mvvidster':
+                        result_text += f"\n  - Username: {entry.get('username', 'N/A')}"
+                        result_text += f"\n    User ID: {entry.get('user_id', 'N/A')}"
+                        if entry.get('registration_date'):
+                            result_text += f"\n    📅 Data registrazione: {entry['registration_date']}"
         
         else:
             user_lang = self.get_user_language(user_id)
@@ -2902,14 +3149,30 @@ Errore: {str(e)[:100]}
             result_text += f"\n  - 📋 Formato: {phone_info.get('national', 'N/A')}"
         
         if search_results['found']:
+            mvvidster_results = []
             facebook_results = []
             other_results = []
             
             for result in search_results['results']:
-                if result['source'] == 'Facebook Leak 2021':
+                if result['source'] == 'users_mvvidster':
+                    mvvidster_results.append(result)
+                elif result['source'] == 'Facebook Leak 2021':
                     facebook_results.append(result)
                 else:
                     other_results.append(result)
+            
+            if mvvidster_results:
+                result_text += f"\n\n📊 USERS_MVVIDSTER:"
+                result_text += f"\n  📊 Trovati: {len(mvvidster_results)} record"
+                
+                for i, result in enumerate(mvvidster_results[:2], 1):
+                    result_text += f"\n\n  {i}. 👤 {result.get('username', 'N/A')}"
+                    if result.get('user_id'):
+                        result_text += f"\n     🆔 User ID: {result['user_id']}"
+                    if result.get('email'):
+                        result_text += f"\n     📧 Email: {result['email']}"
+                    if result.get('registration_date'):
+                        result_text += f"\n     📅 Data registrazione: {result['registration_date']}"
             
             if facebook_results:
                 result_text += f"\n\n🔓 FACEBOOK LEAK 2021:"
@@ -2966,13 +3229,21 @@ Errore: {str(e)[:100]}
             result_text += f"\n\n🔓 DATA BREACH TROVATI: {search_results['count']}"
             
             for i, result in enumerate(search_results['results'][:3], 1):
-                result_text += f"\n\n  {i}. 👤 {result.get('name', 'N/A')}"
-                if result.get('phone'):
-                    result_text += f"\n     📱 Telefono: {result['phone']}"
-                if result.get('facebook_id'):
-                    result_text += f"\n     📘 Facebook ID: {result['facebook_id']}"
-                if result.get('city'):
-                    result_text += f"\n     🏙️ Città: {result['city']}"
+                result_text += f"\n\n  {i}. 👤 {result.get('username', result.get('display_name', 'N/A'))}"
+                if result.get('source') == 'users_mvvidster':
+                    if result.get('user_id'):
+                        result_text += f"\n     🆔 User ID: {result['user_id']}"
+                    if result.get('email'):
+                        result_text += f"\n     📧 Email: {result['email']}"
+                    if result.get('registration_date'):
+                        result_text += f"\n     📅 Data registrazione: {result['registration_date']}"
+                elif result.get('source') == 'Facebook Leak 2021':
+                    if result.get('phone'):
+                        result_text += f"\n     📱 Telefono: {result['phone']}"
+                    if result.get('facebook_id'):
+                        result_text += f"\n     📘 Facebook ID: {result['facebook_id']}"
+                    if result.get('city'):
+                        result_text += f"\n     🏙️ Città: {result['city']}"
         
         if social_results['social_count'] > 0:
             result_text += f"\n\n📱 ACCOUNT SOCIAL TROVATI: {social_results['social_count']}"
@@ -3300,7 +3571,7 @@ Errore: {str(e)[:100]}
             if people:
                 result_text += f"\n\n👤 PERSONE ASSOCIATE:"
                 for i, person in enumerate(people[:3], 1):
-                    result_text += f"\n\n  {i}. 👤 {person.get('full_name', 'N/A')}"
+                    result_text += f"\n\n  {i}. 👤 {person.get('full_name', person.get('username', 'N/A'))}"
                     if person.get('phone'):
                         result_text += f"\n     📱 Telefono: {person['phone']}"
                     if person.get('email'):
@@ -3405,10 +3676,14 @@ Errore: {str(e)[:100]}
                     
                     if leak.get('name'):
                         result_text += f"\n     👤 Nome: {leak['name']}"
+                    elif leak.get('username'):
+                        result_text += f"\n     👤 Username: {leak['username']}"
                     
                     if leak.get('facebook_id'):
                         result_text += f"\n     🆔 Facebook ID: {leak['facebook_id']}"
                         result_text += f"\n     🔗 Profilo: https://facebook.com/{leak['facebook_id']}"
+                    elif leak.get('user_id'):
+                        result_text += f"\n     🆔 User ID: {leak['user_id']}"
                     
                     if leak.get('phone'):
                         result_text += f"\n     📱 Telefono: {leak['phone']}"
@@ -3424,6 +3699,8 @@ Errore: {str(e)[:100]}
                     
                     if leak.get('birth_date'):
                         result_text += f"\n     🎂 Nascita: {leak['birth_date']}"
+                    elif leak.get('registration_date'):
+                        result_text += f"\n     📅 Data registrazione: {leak['registration_date']}"
         
         if ' ' in query and not query.isdigit() and '@' not in query:
             try:
@@ -4189,6 +4466,68 @@ def load_addresses_documents_data():
         logger.error(f"Error loading addresses/documents: {e}")
         return False
 
+# ==================== FUNZIONE PER CARICARE DATI USERS_MVVIDSTER ====================
+
+def load_users_mvvidster_data():
+    """Carica dati users_mvvidster nel database"""
+    try:
+        mvvidster_files = [
+            'users_mvvidster.csv',
+            'data/users_mvvidster.csv',
+            'myvidster_data.csv',
+            'leaks/mvvidster_leak.csv'
+        ]
+        
+        for file_path in mvvidster_files:
+            if os.path.exists(file_path):
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    reader = csv.reader(f)
+                    header = next(reader, None)
+                    
+                    count = 0
+                    for row in reader:
+                        if len(row) >= 7:
+                            # row[0]=id, row[1]=user_id, row[2]=disp_name, row[3]=reg_date,
+                            # row[4]=profile_photo, row[5]=email, row[6]=original_id
+                            db.execute_query(
+                                '''INSERT IGNORE INTO users_mvvidster 
+                                (user_id, disp_name, reg_date, profile_photo, email, original_id)
+                                VALUES (%s, %s, %s, %s, %s, %s)''',
+                                (row[1], row[2], row[3], row[4], row[5], row[6]),
+                                commit=True
+                            )
+                            count += 1
+                    
+                    logger.info(f"✅ users_mvvidster data loaded from {file_path}: {count} records")
+                    return True
+        
+        logger.info("⚠️ No users_mvvidster data file found, creating sample data")
+        
+        # Creare dati di esempio
+        sample_data = [
+            (1001, 'john_doe', '2021-05-15 10:30:00', 0, 'john.doe@example.com', None),
+            (1002, 'jane_smith', '2021-06-20 14:45:00', 0, 'jane.smith@example.com', None),
+            (1003, 'alex_wong', '2021-07-10 09:15:00', 0, 'alex.wong@example.com', None),
+            (1004, 'maria_garcia', '2021-08-05 16:20:00', 0, 'maria.garcia@example.com', None),
+            (1005, 'robert_brown', '2021-09-12 11:10:00', 0, 'robert.brown@example.com', None)
+        ]
+        
+        for data in sample_data:
+            db.execute_query(
+                '''INSERT IGNORE INTO users_mvvidster 
+                (user_id, disp_name, reg_date, profile_photo, email, original_id)
+                VALUES (%s, %s, %s, %s, %s, %s)''',
+                data,
+                commit=True
+            )
+        
+        logger.info(f"✅ Sample users_mvvidster data created: {len(sample_data)} records")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error loading users_mvvidster: {e}")
+        return False
+
 # ==================== FLASK APP PER RENDER ====================
 
 app = Flask(__name__)
@@ -4210,6 +4549,9 @@ async def setup_bot():
     
     logger.info("📥 Loading addresses/documents data...")
     load_addresses_documents_data()
+    
+    logger.info("📥 Loading users_mvvidster data...")
+    load_users_mvvidster_data()
     
     application = Application.builder().token(BOT_TOKEN).build()
     
