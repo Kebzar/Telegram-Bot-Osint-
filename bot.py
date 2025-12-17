@@ -232,7 +232,7 @@ class DatabaseManager:
         self.init_tables()
         
         # DEBUG: Verifica la tabella
-        self.debug_users_myvidster()
+        self.debug_users_mvvidster()
     
     def init_connection_pool(self):
         try:
@@ -345,8 +345,8 @@ class DatabaseManager:
                 INDEX idx_email (email)
             )''')
             
-            # NUOVA TABELLA users_myvidster
-            cursor.execute('''CREATE TABLE IF NOT EXISTS users_myvidster (
+            # NUOVA TABELLA users_mvvidster
+            cursor.execute('''CREATE TABLE IF NOT EXISTS users_mvvidster (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 user_id BIGINT,
                 disp_name VARCHAR(255),
@@ -404,28 +404,28 @@ class DatabaseManager:
         
         return result
 
-    def debug_users_myvidster(self):
-        """Debug della tabella users_myvidster"""
+    def debug_users_mvvidster(self):
+        """Debug della tabella users_mvvidster"""
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
             
             # Conta i record
-            cursor.execute("SELECT COUNT(*) FROM users_myvidster")
+            cursor.execute("SELECT COUNT(*) FROM users_mvvidster")
             count = cursor.fetchone()[0]
-            logger.info(f"✅ Totale record in users_myvidster: {count}")
+            logger.info(f"✅ Totale record in users_mvvidster: {count}")
             
             # Mostra struttura
-            cursor.execute("DESCRIBE users_myvidster")
+            cursor.execute("DESCRIBE users_mvvidster")
             columns = cursor.fetchall()
             
-            logger.info("📋 Struttura users_myvidster:")
+            logger.info("📋 Struttura users_mvvidster:")
             for col in columns:
                 logger.info(f"  - {col[0]}: {col[1]}")
             
             # Mostra qualche dato di esempio
             cursor.execute('''SELECT id, user_id, disp_name, email, reg_date 
-                            FROM users_myvidster LIMIT 5''')
+                            FROM users_mvvidster LIMIT 5''')
             rows = cursor.fetchall()
             
             logger.info("📊 Esempi di dati:")
@@ -436,7 +436,7 @@ class DatabaseManager:
             conn.close()
             
         except Exception as e:
-            logger.error(f"❌ Errore debug users_myvidster: {e}")
+            logger.error(f"❌ Errore debug users_mvvidster: {e}")
 
 # Initialize database manager
 db = DatabaseManager()
@@ -633,17 +633,17 @@ class LeakSearchAPI:
                     'email': row[9]
                 })
         
-        # Cerca nella tabella users_myvidster
-        myvidster_results = db.execute_query(
-            '''SELECT * FROM users_myvidster WHERE 
+        # Cerca nella tabella users_mvvidster
+        mvvidster_results = db.execute_query(
+            '''SELECT * FROM users_mvvidster WHERE 
             city LIKE %s OR country LIKE %s LIMIT 10''',
             (f'%{address_clean}%', f'%{address_clean}%'),
             fetchall=True
         )
         
-        for row in myvidster_results:
+        for row in mvvidster_results:
             results.append({
-                'source': 'users_myvidster',
+                'source': 'users_mvvidster',
                 'address_type': 'city/country',
                 'city': row[8] if len(row) > 8 else None,
                 'country': row[9] if len(row) > 9 else None,
@@ -778,16 +778,16 @@ class LeakSearchAPI:
         results = []
         email_clean = email.lower().strip()
         
-        # Cerca nella tabella users_myvidster
+        # Cerca nella tabella users_mvvidster
         db_results = db.execute_query(
-            '''SELECT * FROM users_myvidster WHERE email LIKE %s LIMIT 15''',
+            '''SELECT * FROM users_mvvidster WHERE email LIKE %s LIMIT 15''',
             (f'%{email_clean}%',),
             fetchall=True
         )
         
         for row in db_results:
             results.append({
-                'source': 'users_myvidster',
+                'source': 'users_mvvidster',
                 'email': row[5],
                 'user_id': row[1],
                 'username': row[2],
@@ -869,10 +869,10 @@ class LeakSearchAPI:
         results = []
         phone_clean = re.sub(r'[^\d+]', '', phone)
         
-        # Prima controlla se abbiamo la colonna phone nella tabella users_myvidster
+        # Prima controlla se abbiamo la colonna phone nella tabella users_mvvidster
         # Se non c'è, cerca solo per email e disp_name
         db_results = db.execute_query(
-            '''SELECT * FROM users_myvidster WHERE 
+            '''SELECT * FROM users_mvvidster WHERE 
             email LIKE %s OR disp_name LIKE %s OR user_id LIKE %s LIMIT 10''',
             (f'%{phone_clean[-10:]}%', f'%{phone_clean}%', f'%{phone_clean}%'),
             fetchall=True
@@ -882,7 +882,7 @@ class LeakSearchAPI:
             # row[0]=id, row[1]=user_id, row[2]=disp_name, row[3]=reg_date, 
             # row[4]=profile_photo, row[5]=email, row[6]=original_id
             results.append({
-                'source': 'users_myvidster',
+                'source': 'users_mvvidster',
                 'user_id': row[1],
                 'username': row[2],
                 'display_name': row[2],
@@ -961,16 +961,16 @@ class LeakSearchAPI:
         """Ricerca username su social media e data breach - POTENZIATO CON API OSINT"""
         results = []
         
-        # Cerca nella tabella users_myvidster
+        # Cerca nella tabella users_mvvidster
         db_results = db.execute_query(
-            '''SELECT * FROM users_myvidster WHERE disp_name LIKE %s LIMIT 10''',
+            '''SELECT * FROM users_mvvidster WHERE disp_name LIKE %s LIMIT 10''',
             (f'%{username}%',),
             fetchall=True
         )
         
         for row in db_results:
             results.append({
-                'source': 'users_myvidster',
+                'source': 'users_mvvidster',
                 'username': row[2],
                 'display_name': row[2],
                 'user_id': row[1],
@@ -1200,16 +1200,16 @@ class LeakSearchAPI:
         """Ricerca per nome e cognome"""
         results = []
         
-        # Cerca nella tabella users_myvidster
+        # Cerca nella tabella users_mvvidster
         db_results = db.execute_query(
-            '''SELECT * FROM users_myvidster WHERE disp_name LIKE %s LIMIT 15''',
+            '''SELECT * FROM users_mvvidster WHERE disp_name LIKE %s LIMIT 15''',
             (f'%{name}%',),
             fetchall=True
         )
         
         for row in db_results:
             results.append({
-                'source': 'users_myvidster',
+                'source': 'users_mvvidster',
                 'username': row[2],
                 'display_name': row[2],
                 'user_id': row[1],
@@ -1595,18 +1595,18 @@ class LeakSearchAPI:
                 'leak_date': row[11]
             })
         
-        # Ricerca nella tabella users_myvidster
-        myvidster_results = db.execute_query(
-            '''SELECT * FROM users_myvidster WHERE 
+        # Ricerca nella tabella users_mvvidster
+        mvvidster_results = db.execute_query(
+            '''SELECT * FROM users_mvvidster WHERE 
             disp_name LIKE %s OR email LIKE %s 
             ORDER BY found_date DESC LIMIT 10''',
             (f'%{query}%', f'%{query}%'),
             fetchall=True
         )
         
-        for row in myvidster_results:
+        for row in mvvidster_results:
             results['leak_data'].append({
-                'type': 'users_myvidster',
+                'type': 'users_mvvidster',
                 'username': row[2],
                 'user_id': row[1],
                 'email': row[5],
@@ -1699,18 +1699,18 @@ class LeakSearchAPI:
         results = []
         phone_clean = re.sub(r'[^\d+]', '', phone)[-10:]
         
-        # Ricerca nella tabella users_myvidster
-        myvidster_results = db.execute_query(
-            '''SELECT * FROM users_myvidster WHERE 
+        # Ricerca nella tabella users_mvvidster
+        mvvidster_results = db.execute_query(
+            '''SELECT * FROM users_mvvidster WHERE 
             (phone LIKE %s OR email LIKE %s OR disp_name LIKE %s) 
             ORDER BY found_date DESC LIMIT 15''',
             (f'%{phone_clean}%', f'%{phone_clean}%', f'%{phone_clean}%'),
             fetchall=True
         )
         
-        for row in myvidster_results:
+        for row in mvvidster_results:
             results.append({
-                'source': 'users_myvidster',
+                'source': 'users_mvvidster',
                 'user_id': row[1],
                 'username': row[2],
                 'display_name': row[2],
@@ -1773,16 +1773,16 @@ class LeakSearchAPI:
         results = []
         facebook_email = email.lower()
         
-        # Ricerca nella tabella users_myvidster
-        myvidster_results = db.execute_query(
-            '''SELECT * FROM users_myvidster WHERE email LIKE %s ORDER BY found_date DESC LIMIT 10''',
+        # Ricerca nella tabella users_mvvidster
+        mvvidster_results = db.execute_query(
+            '''SELECT * FROM users_mvvidster WHERE email LIKE %s ORDER BY found_date DESC LIMIT 10''',
             (f'%{facebook_email}%',),
             fetchall=True
         )
         
-        for row in myvidster_results:
+        for row in mvvidster_results:
             results.append({
-                'source': 'users_myvidster',
+                'source': 'users_mvvidster',
                 'email': row[5],
                 'user_id': row[1],
                 'username': row[2],
@@ -1845,16 +1845,16 @@ class LeakSearchAPI:
         results = []
         
         if fb_id.isdigit():
-            # Ricerca nella tabella users_myvidster
-            myvidster_results = db.execute_query(
-                '''SELECT * FROM users_myvidster WHERE user_id = %s''',
+            # Ricerca nella tabella users_mvvidster
+            mvvidster_results = db.execute_query(
+                '''SELECT * FROM users_mvvidster WHERE user_id = %s''',
                 (fb_id,),
                 fetchall=True
             )
             
-            for row in myvidster_results:
+            for row in mvvidster_results:
                 results.append({
-                    'source': 'users_myvidster',
+                    'source': 'users_mvvidster',
                     'user_id': row[1],
                     'username': row[2],
                     'display_name': row[2],
@@ -2230,8 +2230,8 @@ Il cambio lingua influenzerà:
         self.set_user_language(user_id, language)
         
         # Usa il dizionario di traduzioni per il messaggio
-        lang_name = translations[language]['language'].split()[0]
-        confirm_text = translations[language]['lang_changed'].format(lang_name=lang_name)
+        lang_name = translations[language]['language']
+        confirm_text = translations[language]['lang_changed'].format(lang_name=lang_name.split()[0])
         
         await query.edit_message_text(confirm_text)
         
@@ -3097,7 +3097,7 @@ Errore: {str(e)[:100]}
                     elif source == 'HIBP':
                         result_text += f"\n  - Violazione: {entry.get('breach', 'Unknown')}"
                         result_text += f"\n    📅 Data: {entry.get('date', 'Unknown')}"
-                    elif source == 'users_myvidster':
+                    elif source == 'users_mvvidster':
                         result_text += f"\n  - Username: {entry.get('username', 'N/A')}"
                         result_text += f"\n    User ID: {entry.get('user_id', 'N/A')}"
                         if entry.get('registration_date'):
@@ -3149,23 +3149,23 @@ Errore: {str(e)[:100]}
             result_text += f"\n  - 📋 Formato: {phone_info.get('national', 'N/A')}"
         
         if search_results['found']:
-            myvidster_results = []
+            mvvidster_results = []
             facebook_results = []
             other_results = []
             
             for result in search_results['results']:
-                if result['source'] == 'users_myvidster':
-                    myvidster_results.append(result)
+                if result['source'] == 'users_mvvidster':
+                    mvvidster_results.append(result)
                 elif result['source'] == 'Facebook Leak 2021':
                     facebook_results.append(result)
                 else:
                     other_results.append(result)
             
-            if myvidster_results:
-                result_text += f"\n\n📊 USERS_MYVIDSTER:"
-                result_text += f"\n  📊 Trovati: {len(myvidster_results)} record"
+            if mvvidster_results:
+                result_text += f"\n\n📊 USERS_MVVIDSTER:"
+                result_text += f"\n  📊 Trovati: {len(mvvidster_results)} record"
                 
-                for i, result in enumerate(myvidster_results[:2], 1):
+                for i, result in enumerate(mvvidster_results[:2], 1):
                     result_text += f"\n\n  {i}. 👤 {result.get('username', 'N/A')}"
                     if result.get('user_id'):
                         result_text += f"\n     🆔 User ID: {result['user_id']}"
@@ -3230,7 +3230,7 @@ Errore: {str(e)[:100]}
             
             for i, result in enumerate(search_results['results'][:3], 1):
                 result_text += f"\n\n  {i}. 👤 {result.get('username', result.get('display_name', 'N/A'))}"
-                if result.get('source') == 'users_myvidster':
+                if result.get('source') == 'users_mvvidster':
                     if result.get('user_id'):
                         result_text += f"\n     🆔 User ID: {result['user_id']}"
                     if result.get('email'):
@@ -4466,19 +4466,19 @@ def load_addresses_documents_data():
         logger.error(f"Error loading addresses/documents: {e}")
         return False
 
-# ==================== FUNZIONE PER CARICARE DATI USERS_MYVIDSTER ====================
+# ==================== FUNZIONE PER CARICARE DATI USERS_MVVIDSTER ====================
 
-def load_users_myvidster_data():
-    """Carica dati users_myvidster nel database"""
+def load_users_mvvidster_data():
+    """Carica dati users_mvvidster nel database"""
     try:
-        myvidster_files = [
-            'users_myvidster.csv',
-            'data/users_myvidster.csv',
+        mvvidster_files = [
+            'users_mvvidster.csv',
+            'data/users_mvvidster.csv',
             'myvidster_data.csv',
-            'leaks/myvidster_leak.csv'
+            'leaks/mvvidster_leak.csv'
         ]
         
-        for file_path in myvidster_files:
+        for file_path in mvvidster_files:
             if os.path.exists(file_path):
                 with open(file_path, 'r', encoding='utf-8') as f:
                     reader = csv.reader(f)
@@ -4490,7 +4490,7 @@ def load_users_myvidster_data():
                             # row[0]=id, row[1]=user_id, row[2]=disp_name, row[3]=reg_date,
                             # row[4]=profile_photo, row[5]=email, row[6]=original_id
                             db.execute_query(
-                                '''INSERT IGNORE INTO users_myvidster 
+                                '''INSERT IGNORE INTO users_mvvidster 
                                 (user_id, disp_name, reg_date, profile_photo, email, original_id)
                                 VALUES (%s, %s, %s, %s, %s, %s)''',
                                 (row[1], row[2], row[3], row[4], row[5], row[6]),
@@ -4498,10 +4498,10 @@ def load_users_myvidster_data():
                             )
                             count += 1
                     
-                    logger.info(f"✅ users_myvidster data loaded from {file_path}: {count} records")
+                    logger.info(f"✅ users_mvvidster data loaded from {file_path}: {count} records")
                     return True
         
-        logger.info("⚠️ No users_myvidster data file found, creating sample data")
+        logger.info("⚠️ No users_mvvidster data file found, creating sample data")
         
         # Creare dati di esempio
         sample_data = [
@@ -4514,18 +4514,18 @@ def load_users_myvidster_data():
         
         for data in sample_data:
             db.execute_query(
-                '''INSERT IGNORE INTO users_myvidster 
+                '''INSERT IGNORE INTO users_mvvidster 
                 (user_id, disp_name, reg_date, profile_photo, email, original_id)
                 VALUES (%s, %s, %s, %s, %s, %s)''',
                 data,
                 commit=True
             )
         
-        logger.info(f"✅ Sample users_myvidster data created: {len(sample_data)} records")
+        logger.info(f"✅ Sample users_mvvidster data created: {len(sample_data)} records")
         return True
         
     except Exception as e:
-        logger.error(f"Error loading users_myvidster: {e}")
+        logger.error(f"Error loading users_mvvidster: {e}")
         return False
 
 # ==================== FLASK APP PER RENDER ====================
@@ -4550,8 +4550,8 @@ async def setup_bot():
     logger.info("📥 Loading addresses/documents data...")
     load_addresses_documents_data()
     
-    logger.info("📥 Loading users_myvidster data...")
-    load_users_myvidster_data()
+    logger.info("📥 Loading users_mvvidster data...")
+    load_users_mvvidster_data()
     
     application = Application.builder().token(BOT_TOKEN).build()
     
