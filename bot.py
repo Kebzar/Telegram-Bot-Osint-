@@ -438,6 +438,39 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"❌ Errore debug users_mvvidster: {e}")
 
+    def search_users_mvvidster_all_fields(self, search_term: str):
+        """Cerca nella tabella users_mvvidster in tutti i campi"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # Prepara la query per cercare in tutti i campi rilevanti
+            query = '''
+                SELECT * FROM users_mvvidster 
+                WHERE 
+                    disp_name LIKE %s OR
+                    email LIKE %s OR
+                    user_id LIKE %s OR
+                    reg_date LIKE %s OR
+                    original_id LIKE %s
+                LIMIT 20
+            '''
+            
+            search_pattern = f'%{search_term}%'
+            cursor.execute(query, (search_pattern, search_pattern, search_pattern, 
+                                 search_pattern, search_pattern))
+            
+            results = cursor.fetchall()
+            
+            cursor.close()
+            conn.close()
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"Errore ricerca users_mvvidster: {e}")
+            return []
+
 # Initialize database manager
 db = DatabaseManager()
 
@@ -504,6 +537,282 @@ class LeakSearchAPI:
         has_indicator = any(indicator in text.lower() for indicator in address_indicators)
         
         return has_number or has_indicator
+    
+    async def search_email(self, email: str) -> Dict:
+        """Ricerca email in data breach - POTENZIATA"""
+        results = []
+        email_clean = email.lower().strip()
+        
+        # Cerca nella tabella users_mvvidster PER EMAIL
+        db_results = db.execute_query(
+            '''SELECT * FROM users_mvvidster WHERE email LIKE %s LIMIT 20''',
+            (f'%{email_clean}%',),
+            fetchall=True
+        )
+        
+        for row in db_results:
+            results.append({
+                'source': 'users_mvvidster',
+                'type': 'email',
+                'email': row[5],
+                'user_id': row[1],
+                'username': row[2],
+                'display_name': row[2],
+                'registration_date': row[3],
+                'profile_photo_id': row[4],
+                'original_id': row[6],
+                'city': row[8] if len(row) > 8 else None,
+                'country': row[9] if len(row) > 9 else None
+            })
+        
+        if HIBP_API_KEY:
+            try:
+                headers = {'hibp-api-key': HIBP_API_KEY}
+                response = self.session.get(
+                    f'https://haveibeenpwned.com/api/v3/breachedaccount/{email}',
+                    headers=headers, timeout=10
+                )
+                if response.status_code == 200:
+                    breaches = response.json()
+                    for breach in breaches:
+                        results.append({
+                            'source': 'HIBP',
+                            'breach': breach['Name'],
+                            'date': breach.get('BreachDate'),
+                            'data_classes': breach.get('DataClasses', []),
+                            'description': breach.get('Description', '')
+                        })
+            except Exception as e:
+                logger.error(f"HIBP error: {e}")
+        
+        if DEHASHED_API_KEY:
+            try:
+                auth = base64.b64encode(f"{DEHASHED_EMAIL}:{DEHASHED_API_KEY}".encode()).decode()
+                headers = {'Authorization': f'Basic {auth}'}
+                response = self.session.get(
+                    f'https://api.dehashed.com/search?query={quote_plus(email)}',
+                    headers=headers, timeout=15
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get('entries'):
+                        for entry in data['entries'][:20]:
+                            results.append({
+                                'source': 'Dehashed',
+                                'database': entry.get('database_name', 'Unknown'),
+                                'email': entry.get('email'),
+                                'password': entry.get('password'),
+                                'hash': entry.get('hashed_password'),
+                                'date': entry.get('obtained')
+                            })
+            except Exception as e:
+                logger.error(f"Dehashed error: {e}")
+        
+        if SNUSBASE_API_KEY:
+            try:
+                headers = {'Auth': SNUSBASE_API_KEY}
+                data = {'terms': [email], 'types': ['email']}
+                response = self.session.post(
+                    'https://api.snusbase.com/v3/search',
+                    headers=headers, json=data, timeout=20
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get('results'):
+                        for entry in data['results'][:15]:
+                            results.append({
+                                'source': 'Snusbase',
+                                'database': entry.get('database', 'Unknown'),
+                                'email': entry.get('email'),
+                                'password': entry.get('password'),
+                                'hash': entry.get('hash')
+                            })
+            except Exception as e:
+                logger.error(f"Snusbase error: {e}")
+        
+        return {'found': len(results) > 0, 'results': results, 'count': len(results)}
+    
+    async def search_username_mvvidster(self, username: str) -> Dict:
+        """Ricerca username nella tabella users_mvvidster"""
+        results = []
+        
+        # Cerca username (disp_name) nella tabella users_mvvidster
+        db_results = db.execute_query(
+            '''SELECT * FROM users_mvvidster WHERE disp_name LIKE %s LIMIT 20''',
+            (f'%{username}%',),
+            fetchall=True
+        )
+        
+        for row in db_results:
+            results.append({
+                'source': 'users_mvvidster',
+                'type': 'username',
+                'username': row[2],
+                'user_id': row[1],
+                'email': row[5],
+                'display_name': row[2],
+                'registration_date': row[3],
+                'profile_photo_id': row[4],
+                'original_id': row[6],
+                'city': row[8] if len(row) > 8 else None,
+                'country': row[9] if len(row) > 9 else None
+            })
+        
+        return {'found': len(results) > 0, 'results': results, 'count': len(results)}
+
+    async def search_date_mvvidster(self, date_str: str) -> Dict:
+        """Ricerca per data di registrazione nella tabella users_mvvidster"""
+        results = []
+        
+        # Cerca per data di registrazione
+        db_results = db.execute_query(
+            '''SELECT * FROM users_mvvidster WHERE reg_date LIKE %s LIMIT 20''',
+            (f'%{date_str}%',),
+            fetchall=True
+        )
+        
+        for row in db_results:
+            results.append({
+                'source': 'users_mvvidster',
+                'type': 'date',
+                'registration_date': row[3],
+                'username': row[2],
+                'user_id': row[1],
+                'email': row[5],
+                'display_name': row[2],
+                'profile_photo_id': row[4],
+                'original_id': row[6],
+                'city': row[8] if len(row) > 8 else None,
+                'country': row[9] if len(row) > 9 else None
+            })
+        
+        return {'found': len(results) > 0, 'results': results, 'count': len(results)}
+
+    async def search_all_fields_mvvidster(self, search_term: str) -> Dict:
+        """Ricerca completa in tutti i campi della tabella users_mvvidster"""
+        results = []
+        
+        # Usa la nuova funzione del DatabaseManager
+        db_results = db.search_users_mvvidster_all_fields(search_term)
+        
+        for row in db_results:
+            results.append({
+                'source': 'users_mvvidster',
+                'type': 'all_fields',
+                'search_term': search_term,
+                'username': row[2],
+                'user_id': row[1],
+                'email': row[5],
+                'display_name': row[2],
+                'registration_date': row[3],
+                'profile_photo_id': row[4],
+                'original_id': row[6],
+                'city': row[8] if len(row) > 8 else None,
+                'country': row[9] if len(row) > 9 else None
+            })
+        
+        return {'found': len(results) > 0, 'results': results, 'count': len(results)}
+    
+    async def search_name(self, name: str) -> Dict:
+        """Ricerca per nome e cognome - POTENZIATA CON MVVIDSTER"""
+        results = []
+        
+        # Cerca nella tabella users_mvvidster per disp_name
+        db_results = db.execute_query(
+            '''SELECT * FROM users_mvvidster WHERE disp_name LIKE %s LIMIT 15''',
+            (f'%{name}%',),
+            fetchall=True
+        )
+        
+        for row in db_results:
+            results.append({
+                'source': 'users_mvvidster',
+                'type': 'name',
+                'username': row[2],
+                'display_name': row[2],
+                'user_id': row[1],
+                'email': row[5],
+                'registration_date': row[3],
+                'profile_photo_id': row[4],
+                'original_id': row[6],
+                'city': row[8] if len(row) > 8 else None,
+                'country': row[9] if len(row) > 9 else None
+            })
+        
+        parts = name.split()
+        
+        if len(parts) >= 2:
+            first_name, last_name = parts[0], parts[1]
+            
+            # Ricerca nel database TiDB (tabella facebook_leaks mantenuta per compatibilità)
+            fb_results = db.execute_query(
+                '''SELECT * FROM facebook_leaks WHERE 
+                (name LIKE %s OR surname LIKE %s) LIMIT 15''',
+                (f'%{first_name}%', f'%{last_name}%'),
+                fetchall=True
+            )
+            
+            for row in fb_results:
+                results.append({
+                    'source': 'Facebook Leak 2021',
+                    'type': 'facebook',
+                    'phone': row[1],
+                    'facebook_id': row[2],
+                    'name': f"{row[3]} {row[4]}",
+                    'gender': row[5],
+                    'birth_date': row[6],
+                    'city': row[7],
+                    'country': row[8],
+                    'company': row[9]
+                })
+        
+        return {'found': len(results) > 0, 'results': results, 'count': len(results)}
+    
+    def detect_search_type(self, query: str) -> str:
+        """Determina automaticamente il tipo di ricerca"""
+        query_lower = query.lower()
+        
+        if '@' in query:
+            return 'email'
+        
+        phone_pattern = r'^[\+]?[0-9\s\-\(\)]{8,}$'
+        if re.match(phone_pattern, re.sub(r'[^\d+]', '', query)):
+            return 'phone'
+        
+        ip_pattern = r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$'
+        if re.match(ip_pattern, query):
+            return 'ip'
+        
+        if self.is_document_number(query):
+            return 'document'
+        
+        address_indicators = ['via', 'viale', 'piazza', 'corso', 'largo', 'vicolo', 'strada',
+                             'street', 'avenue', 'boulevard', 'road', 'lane', 'drive']
+        if any(indicator in query_lower for indicator in address_indicators) and any(c.isdigit() for c in query):
+            return 'address'
+        
+        # Controlla se è una data (formato YYYY-MM-DD)
+        date_pattern = r'^\d{4}-\d{2}-\d{2}$'
+        if re.match(date_pattern, query):
+            return 'date_mvvidster'
+        
+        # Controlla se è un numero (potrebbe essere user_id o original_id)
+        if query.isdigit():
+            return 'user_id_mvvidster'
+        
+        if len(query) <= 30 and ' ' not in query:
+            return 'username_mvvidster'
+        
+        hash_patterns = [
+            r'^[a-f0-9]{32}$',
+            r'^[a-f0-9]{40}$',
+            r'^[a-f0-9]{64}$'
+        ]
+        if any(re.match(pattern, query_lower) for pattern in hash_patterns):
+            return 'hash'
+        
+        # Default: cerca come nome/username generico
+        return 'name_mvvidster'
     
     async def search_document(self, document_number: str) -> Dict:
         """Ricerca numero documento in data breach"""
@@ -770,97 +1079,6 @@ class LeakSearchAPI:
                             })
             except Exception as e:
                 logger.error(f"Hunter work address error: {e}")
-        
-        return {'found': len(results) > 0, 'results': results, 'count': len(results)}
-    
-    async def search_email(self, email: str) -> Dict:
-        """Ricerca email in data breach"""
-        results = []
-        email_clean = email.lower().strip()
-        
-        # Cerca nella tabella users_mvvidster
-        db_results = db.execute_query(
-            '''SELECT * FROM users_mvvidster WHERE email LIKE %s LIMIT 15''',
-            (f'%{email_clean}%',),
-            fetchall=True
-        )
-        
-        for row in db_results:
-            results.append({
-                'source': 'users_mvvidster',
-                'email': row[5],
-                'user_id': row[1],
-                'username': row[2],
-                'display_name': row[2],
-                'registration_date': row[3],
-                'profile_photo_id': row[4],
-                'original_id': row[6]
-            })
-        
-        if HIBP_API_KEY:
-            try:
-                headers = {'hibp-api-key': HIBP_API_KEY}
-                response = self.session.get(
-                    f'https://haveibeenpwned.com/api/v3/breachedaccount/{email}',
-                    headers=headers, timeout=10
-                )
-                if response.status_code == 200:
-                    breaches = response.json()
-                    for breach in breaches:
-                        results.append({
-                            'source': 'HIBP',
-                            'breach': breach['Name'],
-                            'date': breach.get('BreachDate'),
-                            'data_classes': breach.get('DataClasses', []),
-                            'description': breach.get('Description', '')
-                        })
-            except Exception as e:
-                logger.error(f"HIBP error: {e}")
-        
-        if DEHASHED_API_KEY:
-            try:
-                auth = base64.b64encode(f"{DEHASHED_EMAIL}:{DEHASHED_API_KEY}".encode()).decode()
-                headers = {'Authorization': f'Basic {auth}'}
-                response = self.session.get(
-                    f'https://api.dehashed.com/search?query={quote_plus(email)}',
-                    headers=headers, timeout=15
-                )
-                if response.status_code == 200:
-                    data = response.json()
-                    if data.get('entries'):
-                        for entry in data['entries'][:20]:
-                            results.append({
-                                'source': 'Dehashed',
-                                'database': entry.get('database_name', 'Unknown'),
-                                'email': entry.get('email'),
-                                'password': entry.get('password'),
-                                'hash': entry.get('hashed_password'),
-                                'date': entry.get('obtained')
-                            })
-            except Exception as e:
-                logger.error(f"Dehashed error: {e}")
-        
-        if SNUSBASE_API_KEY:
-            try:
-                headers = {'Auth': SNUSBASE_API_KEY}
-                data = {'terms': [email], 'types': ['email']}
-                response = self.session.post(
-                    'https://api.snusbase.com/v3/search',
-                    headers=headers, json=data, timeout=20
-                )
-                if response.status_code == 200:
-                    data = response.json()
-                    if data.get('results'):
-                        for entry in data['results'][:15]:
-                            results.append({
-                                'source': 'Snusbase',
-                                'database': entry.get('database', 'Unknown'),
-                                'email': entry.get('email'),
-                                'password': entry.get('password'),
-                                'hash': entry.get('hash')
-                            })
-            except Exception as e:
-                logger.error(f"Snusbase error: {e}")
         
         return {'found': len(results) > 0, 'results': results, 'count': len(results)}
     
@@ -1195,57 +1413,6 @@ class LeakSearchAPI:
                 continue
         
         return all_results
-    
-    async def search_name(self, name: str) -> Dict:
-        """Ricerca per nome e cognome"""
-        results = []
-        
-        # Cerca nella tabella users_mvvidster
-        db_results = db.execute_query(
-            '''SELECT * FROM users_mvvidster WHERE disp_name LIKE %s LIMIT 15''',
-            (f'%{name}%',),
-            fetchall=True
-        )
-        
-        for row in db_results:
-            results.append({
-                'source': 'users_mvvidster',
-                'username': row[2],
-                'display_name': row[2],
-                'user_id': row[1],
-                'email': row[5],
-                'registration_date': row[3],
-                'profile_photo_id': row[4],
-                'original_id': row[6]
-            })
-        
-        parts = name.split()
-        
-        if len(parts) >= 2:
-            first_name, last_name = parts[0], parts[1]
-            
-            # Ricerca nel database TiDB (tabella facebook_leaks mantenuta per compatibilità)
-            fb_results = db.execute_query(
-                '''SELECT * FROM facebook_leaks WHERE 
-                (name LIKE %s OR surname LIKE %s) LIMIT 15''',
-                (f'%{first_name}%', f'%{last_name}%'),
-                fetchall=True
-            )
-            
-            for row in fb_results:
-                results.append({
-                    'source': 'Facebook Leak 2021',
-                    'phone': row[1],
-                    'facebook_id': row[2],
-                    'name': f"{row[3]} {row[4]}",
-                    'gender': row[5],
-                    'birth_date': row[6],
-                    'city': row[7],
-                    'country': row[8],
-                    'company': row[9]
-                })
-        
-        return {'found': len(results) > 0, 'results': results, 'count': len(results)}
     
     async def search_ip(self, ip: str) -> Dict:
         """Ricerca informazioni IP"""
@@ -2727,48 +2894,9 @@ https://www.paypal.me/BotAi36
             components['names'] = combined_names
         
         return components
-
-    def detect_search_type(self, query: str) -> str:
-        """Determina automaticamente il tipo di ricerca"""
-        query_lower = query.lower()
-        
-        if '@' in query:
-            return 'email'
-        
-        phone_pattern = r'^[\+]?[0-9\s\-\(\)]{8,}$'
-        if re.match(phone_pattern, re.sub(r'[^\d+]', '', query)):
-            return 'phone'
-        
-        ip_pattern = r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$'
-        if re.match(ip_pattern, query):
-            return 'ip'
-        
-        if self.api.is_document_number(query):
-            return 'document'
-        
-        address_indicators = ['via', 'viale', 'piazza', 'corso', 'largo', 'vicolo', 'strada',
-                             'street', 'avenue', 'boulevard', 'road', 'lane', 'drive']
-        if any(indicator in query_lower for indicator in address_indicators) and any(c.isdigit() for c in query):
-            return 'address'
-        
-        if len(query) <= 30 and ' ' not in query:
-            return 'password'
-        
-        hash_patterns = [
-            r'^[a-f0-9]{32}$',
-            r'^[a-f0-9]{40}$',
-            r'^[a-f0-9]{64}$'
-        ]
-        if any(re.match(pattern, query_lower) for pattern in hash_patterns):
-            return 'hash'
-        
-        if ' ' not in query and len(query) <= 30:
-            return 'username'
-        
-        return 'name'
     
     async def handle_message(self, update: Update, context: CallbackContext):
-        """Gestisce tutti i messaggi di ricerca - Supporta query composte"""
+        """Gestisce tutti i messaggi di ricerca"""
         user_id = update.effective_user.id
         query = update.message.text.strip()
         
@@ -2808,12 +2936,19 @@ https://www.paypal.me/BotAi36
             if total_components >= 2:
                 await self.search_composite_advanced(update, msg, query, user_id, data_italiana)
             else:
-                search_type = self.detect_search_type(query)
+                search_type = self.api.detect_search_type(query)
                 
                 if any(keyword in query.lower() for keyword in ['facebook', 'fb', 'face', 'フェイスブック']):
                     search_type = 'facebook'
                 
-                if search_type == 'email':
+                # Gestione specifica per MVVIDSTER
+                if search_type == 'username_mvvidster' or search_type == 'name_mvvidster':
+                    await self.search_mvvidster_complete(update, msg, query, user_id, data_italiana)
+                elif search_type == 'date_mvvidster':
+                    await self.search_mvvidster_complete(update, msg, query, user_id, data_italiana)
+                elif search_type == 'user_id_mvvidster':
+                    await self.search_mvvidster_complete(update, msg, query, user_id, data_italiana)
+                elif search_type == 'email':
                     await self.search_email_exact(update, msg, query, user_id, data_italiana)
                 elif search_type == 'phone':
                     await self.search_phone_exact(update, msg, query, user_id, data_italiana)
@@ -2834,7 +2969,8 @@ https://www.paypal.me/BotAi36
                 elif search_type == 'facebook':
                     await self.search_facebook_complete(update, msg, query, user_id, data_italiana)
                 else:
-                    await self.search_composite_advanced(update, msg, query, user_id, data_italiana)
+                    # Default: cerca tutto in MVVIDSTER
+                    await self.search_mvvidster_complete(update, msg, query, user_id, data_italiana)
             
         except Exception as e:
             logger.error(f"Search error: {e}")
@@ -2850,6 +2986,93 @@ Errore: {str(e)[:100]}
                 await msg.edit_text(error_text)
             except:
                 await update.message.reply_text(error_text)
+    
+    async def search_mvvidster_complete(self, update: Update, msg, search_term: str, user_id: int, data_italiana: str):
+        """Ricerca completa nella tabella users_mvvidster"""
+        # Prima cerca in tutti i campi
+        all_results = await self.api.search_all_fields_mvvidster(search_term)
+        
+        # Poi cerca specificamente per username
+        username_results = await self.api.search_username_mvvidster(search_term)
+        
+        # Poi cerca specificamente per data
+        date_results = await self.api.search_date_mvvidster(search_term)
+        
+        now = datetime.now()
+        
+        result_text = f"""🔍 RICERCA COMPLETA MVVIDSTER
+- Termine: {search_term}
+- Database: users_mvvidster"""
+        
+        all_unique_results = []
+        seen_ids = set()
+        
+        # Combina tutti i risultati evitando duplicati
+        for source_results in [all_results, username_results, date_results]:
+            if source_results['found']:
+                for result in source_results['results']:
+                    user_id_key = result.get('user_id')
+                    if user_id_key not in seen_ids:
+                        seen_ids.add(user_id_key)
+                        all_unique_results.append(result)
+        
+        if all_unique_results:
+            result_text += f"\n\n✅ RISULTATI TROVATI: {len(all_unique_results)}"
+            
+            for i, result in enumerate(all_unique_results[:10], 1):
+                result_text += f"\n\n  {i}. 👤 {result.get('username', result.get('display_name', 'N/A'))}"
+                
+                if result.get('email'):
+                    result_text += f"\n     📧 Email: {result['email']}"
+                
+                if result.get('user_id'):
+                    result_text += f"\n     🆔 User ID: {result['user_id']}"
+                
+                if result.get('registration_date'):
+                    result_text += f"\n     📅 Data registrazione: {result['registration_date']}"
+                
+                if result.get('original_id'):
+                    result_text += f"\n     🔗 Original ID: {result['original_id']}"
+                
+                if result.get('profile_photo_id') and result['profile_photo_id'] > 0:
+                    result_text += f"\n     📸 Foto profilo: Si (ID: {result['profile_photo_id']})"
+                
+                if result.get('city'):
+                    result_text += f"\n     🏙️ Città: {result['city']}"
+                
+                if result.get('country'):
+                    result_text += f"\n     🌍 Paese: {result['country']}"
+                
+                result_text += f"\n     📊 Fonte: {result.get('source', 'users_mvvidster')}"
+            
+            if len(all_unique_results) > 10:
+                result_text += f"\n\n📊 Altri {len(all_unique_results) - 10} risultati non mostrati..."
+        
+        else:
+            user_lang = self.get_user_language(user_id)
+            result_text += f"\n\n{translations[user_lang]['no_results']}"
+            result_text += f"\n❌ Nessun risultato trovato in users_mvvidster per: {search_term}"
+            
+            result_text += f"\n\n💡 Cerca con:"
+            result_text += f"\n  · Username/disp_name"
+            result_text += f"\n  · Email"
+            result_text += f"\n  · User ID"
+            result_text += f"\n  · Data (formato: YYYY-MM-DD)"
+            result_text += f"\n  · Original ID"
+        
+        user_lang = self.get_user_language(user_id)
+        result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
+        result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
+        result_text += f"\n\n{data_italiana}"
+        
+        try:
+            await msg.edit_text(result_text)
+        except:
+            await msg.delete()
+            parts = [result_text[i:i+4000] for i in range(0, len(result_text), 4000)]
+            for part in parts:
+                await update.message.reply_text(part)
     
     async def search_composite_advanced(self, update: Update, msg, query: str, user_id: int, data_italiana: str):
         """Ricerca composta avanzata - Supporta query con più informazioni"""
@@ -2974,7 +3197,7 @@ Errore: {str(e)[:100]}
             result_text += f"\n\n🔍 NESSUNA INFORMAZIONE STRUTTURATA RILEVATA"
             result_text += f"\n📝 Eseguo ricerca standard..."
             
-            search_type = self.detect_search_type(query)
+            search_type = self.api.detect_search_type(query)
             if search_type == 'email':
                 email_results = await self.api.search_email(query)
                 if email_results['found']:
@@ -3955,6 +4178,46 @@ Errore: {str(e)[:100]}
             logger.error(f"Add credits error: {e}")
             await update.message.reply_text(f"❌ Errore: {str(e)}")
     
+    async def debug_mvvidster(self, update: Update, context: CallbackContext):
+        """Comando per debug della tabella users_mvvidster"""
+        user_id = update.effective_user.id
+        
+        if user_id != ADMIN_ID:
+            await update.message.reply_text("❌ Accesso negato")
+            return
+        
+        try:
+            # Conta i record
+            count = db.execute_query("SELECT COUNT(*) FROM users_mvvidster", fetchone=True)[0]
+            
+            # Prendi alcuni esempi
+            samples = db.execute_query(
+                "SELECT id, user_id, disp_name, email, reg_date FROM users_mvvidster LIMIT 10",
+                fetchall=True
+            )
+            
+            text = f"""🔧 DEBUG TABELLA USERS_MVVIDSTER
+
+📊 Statistiche:
+· Record totali: {count}
+· Ultimi 10 record:
+
+"""
+            
+            for i, row in enumerate(samples, 1):
+                text += f"\n{i}. ID:{row[0]} UserID:{row[1]} Name:'{row[2]}' Email:'{row[3]}' Date:{row[4]}"
+            
+            # Mostra le colonne
+            columns = db.execute_query("DESCRIBE users_mvvidster", fetchall=True)
+            text += f"\n\n📋 Colonne della tabella:"
+            for col in columns:
+                text += f"\n  - {col[0]}: {col[1]}"
+            
+            await update.message.reply_text(text)
+            
+        except Exception as e:
+            await update.message.reply_text(f"❌ Errore debug: {e}")
+    
     async def help_command(self, update: Update, context: CallbackContext):
         """Comando help"""
         now = datetime.now()
@@ -4265,7 +4528,7 @@ Query: {query}
             
             for i, line in enumerate(lines, 1):
                 try:
-                    search_type = self.detect_search_type(line)
+                    search_type = self.api.detect_search_type(line)
                     
                     if search_type == 'email':
                         results = await self.api.search_email(line)
@@ -4566,6 +4829,7 @@ async def setup_bot():
     application.add_handler(CommandHandler("addcredits", bot.addcredits_command))
     application.add_handler(CommandHandler("help", bot.help_command))
     application.add_handler(CommandHandler("utf8", bot.utf8_command))
+    application.add_handler(CommandHandler("debug_mvvidster", bot.debug_mvvidster))
     
     application.add_handler(CallbackQueryHandler(bot.handle_button_callback))
     
