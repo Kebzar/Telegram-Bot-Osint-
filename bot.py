@@ -345,7 +345,7 @@ class DatabaseManager:
                 INDEX idx_email (email)
             )''')
             
-            # NUOVA TABELLA users_mvvidster - AGGIORNATA PER CORRISPONDERE ALLE IMMAGINI
+            # NUOVA TABELLA users_mvvidster
             cursor.execute('''CREATE TABLE IF NOT EXISTS users_mvvidster (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 user_id BIGINT,
@@ -354,21 +354,14 @@ class DatabaseManager:
                 profile_photo INT DEFAULT 0,
                 email VARCHAR(255),
                 original_id BIGINT,
-                phone VARCHAR(50),
-                city VARCHAR(255),
-                country VARCHAR(100),
-                status VARCHAR(50),
-                premium_status VARCHAR(50),
-                last_login DATETIME,
-                account_type VARCHAR(50),
+                phone VARCHAR(50),  # Aggiungi se vuoi
+                city VARCHAR(255),  # Aggiungi se vuoi
+                country VARCHAR(100),  # Aggiungi se vuoi
                 found_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 INDEX idx_user_id (user_id),
                 INDEX idx_disp_name (disp_name),
                 INDEX idx_email (email),
-                INDEX idx_reg_date (reg_date),
-                INDEX idx_original_id (original_id),
-                INDEX idx_phone (phone),
-                INDEX idx_status (status)
+                INDEX idx_reg_date (reg_date)
             )''')
             
             conn.commit()
@@ -431,13 +424,13 @@ class DatabaseManager:
                 logger.info(f"  - {col[0]}: {col[1]}")
             
             # Mostra qualche dato di esempio
-            cursor.execute('''SELECT id, user_id, disp_name, email, reg_date, original_id, profile_photo 
+            cursor.execute('''SELECT id, user_id, disp_name, email, reg_date 
                             FROM users_mvvidster LIMIT 5''')
             rows = cursor.fetchall()
             
             logger.info("📊 Esempi di dati:")
             for row in rows:
-                logger.info(f"  ID:{row[0]} UserID:{row[1]} Name:'{row[2]}' Email:'{row[3]}' Date:{row[4]} OriginalID:{row[5]} Photo:{row[6]}")
+                logger.info(f"  ID:{row[0]} UserID:{row[1]} Name:'{row[2]}' Email:'{row[3]}' Date:{row[4]}")
             
             cursor.close()
             conn.close()
@@ -512,113 +505,6 @@ class LeakSearchAPI:
         
         return has_number or has_indicator
     
-    async def search_mvvidster_by_id(self, search_id: str) -> Dict:
-        """Ricerca nella tabella users_mvvidster per user_id o original_id"""
-        results = []
-        
-        try:
-            # Prova a convertire in intero
-            int_id = int(search_id)
-            
-            # Cerca per user_id o original_id
-            db_results = db.execute_query(
-                '''SELECT * FROM users_mvvidster WHERE 
-                user_id = %s OR original_id = %s 
-                ORDER BY found_date DESC LIMIT 10''',
-                (int_id, int_id),
-                fetchall=True
-            )
-            
-            for row in db_results:
-                # row[0]=id, row[1]=user_id, row[2]=disp_name, row[3]=reg_date, 
-                # row[4]=profile_photo, row[5]=email, row[6]=original_id
-                # row[7]=phone, row[8]=city, row[9]=country, row[10]=status, 
-                # row[11]=premium_status, row[12]=last_login, row[13]=account_type
-                result = {
-                    'source': 'users_mvvidster',
-                    'user_id': row[1],
-                    'display_name': row[2],
-                    'registration_date': row[3],
-                    'profile_photo_id': row[4],
-                    'email': row[5],
-                    'original_id': row[6],
-                    'phone': row[7] if len(row) > 7 else None,
-                    'city': row[8] if len(row) > 8 else None,
-                    'country': row[9] if len(row) > 9 else None,
-                    'status': row[10] if len(row) > 10 else None,
-                    'premium_status': row[11] if len(row) > 11 else None,
-                    'last_login': row[12] if len(row) > 12 else None,
-                    'account_type': row[13] if len(row) > 13 else None
-                }
-                results.append(result)
-            
-            # Se non trovato, cerca anche come stringa
-            if not results:
-                db_results = db.execute_query(
-                    '''SELECT * FROM users_mvvidster WHERE 
-                    CAST(user_id AS CHAR) LIKE %s OR 
-                    CAST(original_id AS CHAR) LIKE %s OR
-                    disp_name LIKE %s OR
-                    email LIKE %s
-                    ORDER BY found_date DESC LIMIT 10''',
-                    (f'%{search_id}%', f'%{search_id}%', f'%{search_id}%', f'%{search_id}%'),
-                    fetchall=True
-                )
-                
-                for row in db_results:
-                    result = {
-                        'source': 'users_mvvidster',
-                        'user_id': row[1],
-                        'display_name': row[2],
-                        'registration_date': row[3],
-                        'profile_photo_id': row[4],
-                        'email': row[5],
-                        'original_id': row[6],
-                        'phone': row[7] if len(row) > 7 else None,
-                        'city': row[8] if len(row) > 8 else None,
-                        'country': row[9] if len(row) > 9 else None,
-                        'status': row[10] if len(row) > 10 else None,
-                        'premium_status': row[11] if len(row) > 11 else None,
-                        'last_login': row[12] if len(row) > 12 else None,
-                        'account_type': row[13] if len(row) > 13 else None
-                    }
-                    results.append(result)
-            
-        except ValueError:
-            # Se non è un numero, cerca come stringa
-            db_results = db.execute_query(
-                '''SELECT * FROM users_mvvidster WHERE 
-                disp_name LIKE %s OR
-                email LIKE %s OR
-                phone LIKE %s OR
-                city LIKE %s OR
-                country LIKE %s
-                ORDER BY found_date DESC LIMIT 10''',
-                (f'%{search_id}%', f'%{search_id}%', f'%{search_id}%', f'%{search_id}%', f'%{search_id}%'),
-                fetchall=True
-            )
-            
-            for row in db_results:
-                result = {
-                    'source': 'users_mvvidster',
-                    'user_id': row[1],
-                    'display_name': row[2],
-                    'registration_date': row[3],
-                    'profile_photo_id': row[4],
-                    'email': row[5],
-                    'original_id': row[6],
-                    'phone': row[7] if len(row) > 7 else None,
-                    'city': row[8] if len(row) > 8 else None,
-                    'country': row[9] if len(row) > 9 else None,
-                    'status': row[10] if len(row) > 10 else None,
-                    'premium_status': row[11] if len(row) > 11 else None,
-                    'last_login': row[12] if len(row) > 12 else None,
-                    'account_type': row[13] if len(row) > 13 else None
-                }
-                results.append(result)
-        
-        return {'found': len(results) > 0, 'results': results, 'count': len(results)}
-    
     async def search_document(self, document_number: str) -> Dict:
         """Ricerca numero documento in data breach"""
         results = []
@@ -668,27 +554,6 @@ class LeakSearchAPI:
                 'city': row[6],
                 'phone': row[8],
                 'email': row[9]
-            })
-        
-        # Aggiungi ricerca in users_mvvidster per documenti
-        mvvidster_results = db.execute_query(
-            '''SELECT * FROM users_mvvidster WHERE 
-            user_id = %s OR original_id = %s OR email LIKE %s LIMIT 5''',
-            (doc_clean, doc_clean, f'%{doc_clean}%'),
-            fetchall=True
-        )
-        
-        for row in mvvidster_results:
-            results.append({
-                'source': 'users_mvvidster',
-                'document_type': 'User ID/Original ID',
-                'document_number': doc_clean,
-                'user_id': row[1],
-                'display_name': row[2],
-                'email': row[5],
-                'registration_date': row[3],
-                'profile_photo_id': row[4],
-                'original_id': row[6]
             })
         
         if SNUSBASE_API_KEY:
@@ -771,8 +636,8 @@ class LeakSearchAPI:
         # Cerca nella tabella users_mvvidster
         mvvidster_results = db.execute_query(
             '''SELECT * FROM users_mvvidster WHERE 
-            city LIKE %s OR country LIKE %s OR disp_name LIKE %s LIMIT 10''',
-            (f'%{address_clean}%', f'%{address_clean}%', f'%{address_clean}%'),
+            city LIKE %s OR country LIKE %s LIMIT 10''',
+            (f'%{address_clean}%', f'%{address_clean}%'),
             fetchall=True
         )
         
@@ -785,8 +650,7 @@ class LeakSearchAPI:
                 'username': row[2],
                 'user_id': row[1],
                 'email': row[5],
-                'registration_date': row[3],
-                'profile_photo_id': row[4]
+                'registration_date': row[3]
             })
         
         # Cerca anche nella tabella facebook_leaks (se esiste ancora)
@@ -914,9 +778,9 @@ class LeakSearchAPI:
         results = []
         email_clean = email.lower().strip()
         
-        # PRIMA CERCA IN USERS_MVVIDSTER
+        # Cerca nella tabella users_mvvidster
         db_results = db.execute_query(
-            '''SELECT * FROM users_mvvidster WHERE email LIKE %s ORDER BY found_date DESC LIMIT 15''',
+            '''SELECT * FROM users_mvvidster WHERE email LIKE %s LIMIT 15''',
             (f'%{email_clean}%',),
             fetchall=True
         )
@@ -930,11 +794,7 @@ class LeakSearchAPI:
                 'display_name': row[2],
                 'registration_date': row[3],
                 'profile_photo_id': row[4],
-                'original_id': row[6],
-                'phone': row[7] if len(row) > 7 else None,
-                'city': row[8] if len(row) > 8 else None,
-                'country': row[9] if len(row) > 9 else None,
-                'status': row[10] if len(row) > 10 else None
+                'original_id': row[6]
             })
         
         if HIBP_API_KEY:
@@ -1005,24 +865,22 @@ class LeakSearchAPI:
         return {'found': len(results) > 0, 'results': results, 'count': len(results)}
     
     async def search_phone(self, phone: str) -> Dict:
-        """Ricerca numero telefono in data breach - AGGIORNATO"""
+        """Ricerca numero telefono in data breach"""
         results = []
         phone_clean = re.sub(r'[^\d+]', '', phone)
         
-        # PRIMA CERCA IN USERS_MVVIDSTER - ESPLICITA
+        # Prima controlla se abbiamo la colonna phone nella tabella users_mvvidster
+        # Se non c'è, cerca solo per email e disp_name
         db_results = db.execute_query(
             '''SELECT * FROM users_mvvidster WHERE 
-            phone LIKE %s OR 
-            email LIKE %s OR 
-            disp_name LIKE %s OR
-            CAST(user_id AS CHAR) LIKE %s OR
-            CAST(original_id AS CHAR) LIKE %s
-            ORDER BY found_date DESC LIMIT 15''',
-            (f'%{phone_clean}%', f'%{phone_clean}%', f'%{phone_clean}%', f'%{phone_clean}%', f'%{phone_clean}%'),
+            email LIKE %s OR disp_name LIKE %s OR user_id LIKE %s LIMIT 10''',
+            (f'%{phone_clean[-10:]}%', f'%{phone_clean}%', f'%{phone_clean}%'),
             fetchall=True
         )
         
         for row in db_results:
+            # row[0]=id, row[1]=user_id, row[2]=disp_name, row[3]=reg_date, 
+            # row[4]=profile_photo, row[5]=email, row[6]=original_id
             results.append({
                 'source': 'users_mvvidster',
                 'user_id': row[1],
@@ -1031,11 +889,7 @@ class LeakSearchAPI:
                 'email': row[5],
                 'registration_date': row[3],
                 'profile_photo_id': row[4],
-                'original_id': row[6],
-                'phone': row[7] if len(row) > 7 else None,
-                'city': row[8] if len(row) > 8 else None,
-                'country': row[9] if len(row) > 9 else None,
-                'status': row[10] if len(row) > 10 else None
+                'original_id': row[6]
             })
         
         if DEHASHED_API_KEY:
@@ -1107,32 +961,23 @@ class LeakSearchAPI:
         """Ricerca username su social media e data breach - POTENZIATO CON API OSINT"""
         results = []
         
-        # PRIMA CERCA IN USERS_MVVIDSTER - ESPLICITA
+        # Cerca nella tabella users_mvvidster
         db_results = db.execute_query(
-            '''SELECT * FROM users_mvvidster WHERE 
-            disp_name LIKE %s OR
-            email LIKE %s OR
-            CAST(user_id AS CHAR) LIKE %s OR
-            CAST(original_id AS CHAR) LIKE %s
-            ORDER BY found_date DESC LIMIT 15''',
-            (f'%{username}%', f'%{username}%', f'%{username}%', f'%{username}%'),
+            '''SELECT * FROM users_mvvidster WHERE disp_name LIKE %s LIMIT 10''',
+            (f'%{username}%',),
             fetchall=True
         )
         
         for row in db_results:
             results.append({
                 'source': 'users_mvvidster',
-                'user_id': row[1],
                 'username': row[2],
                 'display_name': row[2],
+                'user_id': row[1],
                 'email': row[5],
                 'registration_date': row[3],
                 'profile_photo_id': row[4],
-                'original_id': row[6],
-                'phone': row[7] if len(row) > 7 else None,
-                'city': row[8] if len(row) > 8 else None,
-                'country': row[9] if len(row) > 9 else None,
-                'status': row[10] if len(row) > 10 else None
+                'original_id': row[6]
             })
         
         social_results = []
@@ -1296,10 +1141,8 @@ class LeakSearchAPI:
                 unique_results.append(result)
         
         return {
-            'mvvidster': results,  # Aggiunto risultati users_mvvidster
             'social': unique_results,
             'breach': breach_results,
-            'mvvidster_count': len(results),
             'social_count': len(unique_results),
             'breach_count': len(breach_results),
             'api_sources': list(set([r.get('source', 'Unknown') for r in unique_results]))
@@ -1357,32 +1200,23 @@ class LeakSearchAPI:
         """Ricerca per nome e cognome"""
         results = []
         
-        # PRIMA CERCA IN USERS_MVVIDSTER
+        # Cerca nella tabella users_mvvidster
         db_results = db.execute_query(
-            '''SELECT * FROM users_mvvidster WHERE 
-            disp_name LIKE %s OR
-            email LIKE %s OR
-            CAST(user_id AS CHAR) LIKE %s OR
-            CAST(original_id AS CHAR) LIKE %s
-            ORDER BY found_date DESC LIMIT 15''',
-            (f'%{name}%', f'%{name}%', f'%{name}%', f'%{name}%'),
+            '''SELECT * FROM users_mvvidster WHERE disp_name LIKE %s LIMIT 15''',
+            (f'%{name}%',),
             fetchall=True
         )
         
         for row in db_results:
             results.append({
                 'source': 'users_mvvidster',
-                'user_id': row[1],
                 'username': row[2],
                 'display_name': row[2],
+                'user_id': row[1],
                 'email': row[5],
                 'registration_date': row[3],
                 'profile_photo_id': row[4],
-                'original_id': row[6],
-                'phone': row[7] if len(row) > 7 else None,
-                'city': row[8] if len(row) > 8 else None,
-                'country': row[9] if len(row) > 9 else None,
-                'status': row[10] if len(row) > 10 else None
+                'original_id': row[6]
             })
         
         parts = name.split()
@@ -1764,11 +1598,9 @@ class LeakSearchAPI:
         # Ricerca nella tabella users_mvvidster
         mvvidster_results = db.execute_query(
             '''SELECT * FROM users_mvvidster WHERE 
-            disp_name LIKE %s OR email LIKE %s OR 
-            CAST(user_id AS CHAR) LIKE %s OR
-            CAST(original_id AS CHAR) LIKE %s
+            disp_name LIKE %s OR email LIKE %s 
             ORDER BY found_date DESC LIMIT 10''',
-            (f'%{query}%', f'%{query}%', f'%{query}%', f'%{query}%'),
+            (f'%{query}%', f'%{query}%'),
             fetchall=True
         )
         
@@ -1780,10 +1612,7 @@ class LeakSearchAPI:
                 'email': row[5],
                 'registration_date': row[3],
                 'profile_photo_id': row[4],
-                'original_id': row[6],
-                'phone': row[7] if len(row) > 7 else None,
-                'city': row[8] if len(row) > 8 else None,
-                'country': row[9] if len(row) > 9 else None
+                'original_id': row[6]
             })
         
         if FACEBOOK_GRAPH_API_KEY and ' ' in query:
@@ -1870,16 +1699,12 @@ class LeakSearchAPI:
         results = []
         phone_clean = re.sub(r'[^\d+]', '', phone)[-10:]
         
-        # PRIMA CERCA IN USERS_MVVIDSTER
+        # Ricerca nella tabella users_mvvidster
         mvvidster_results = db.execute_query(
             '''SELECT * FROM users_mvvidster WHERE 
-            phone LIKE %s OR 
-            email LIKE %s OR 
-            disp_name LIKE %s OR
-            CAST(user_id AS CHAR) LIKE %s OR
-            CAST(original_id AS CHAR) LIKE %s
+            (phone LIKE %s OR email LIKE %s OR disp_name LIKE %s) 
             ORDER BY found_date DESC LIMIT 15''',
-            (f'%{phone_clean}%', f'%{phone_clean}%', f'%{phone_clean}%', f'%{phone_clean}%', f'%{phone_clean}%'),
+            (f'%{phone_clean}%', f'%{phone_clean}%', f'%{phone_clean}%'),
             fetchall=True
         )
         
@@ -1891,12 +1716,9 @@ class LeakSearchAPI:
                 'display_name': row[2],
                 'email': row[5],
                 'registration_date': row[3],
-                'profile_photo_id': row[4],
-                'original_id': row[6],
                 'phone': row[7] if len(row) > 7 else None,
-                'city': row[8] if len(row) > 8 else None,
-                'country': row[9] if len(row) > 9 else None,
-                'status': row[10] if len(row) > 10 else None
+                'profile_photo_id': row[4],
+                'original_id': row[6]
             })
         
         # Ricerca nel database TiDB (tabella facebook_leaks mantenuta per compatibilità)
@@ -1951,15 +1773,10 @@ class LeakSearchAPI:
         results = []
         facebook_email = email.lower()
         
-        # PRIMA CERCA IN USERS_MVVIDSTER
+        # Ricerca nella tabella users_mvvidster
         mvvidster_results = db.execute_query(
-            '''SELECT * FROM users_mvvidster WHERE 
-            email LIKE %s OR
-            disp_name LIKE %s OR
-            CAST(user_id AS CHAR) LIKE %s OR
-            CAST(original_id AS CHAR) LIKE %s
-            ORDER BY found_date DESC LIMIT 15''',
-            (f'%{facebook_email}%', f'%{facebook_email}%', f'%{facebook_email}%', f'%{facebook_email}%'),
+            '''SELECT * FROM users_mvvidster WHERE email LIKE %s ORDER BY found_date DESC LIMIT 10''',
+            (f'%{facebook_email}%',),
             fetchall=True
         )
         
@@ -1972,11 +1789,7 @@ class LeakSearchAPI:
                 'display_name': row[2],
                 'registration_date': row[3],
                 'profile_photo_id': row[4],
-                'original_id': row[6],
-                'phone': row[7] if len(row) > 7 else None,
-                'city': row[8] if len(row) > 8 else None,
-                'country': row[9] if len(row) > 9 else None,
-                'status': row[10] if len(row) > 10 else None
+                'original_id': row[6]
             })
         
         if DEHASHED_API_KEY:
@@ -2032,14 +1845,10 @@ class LeakSearchAPI:
         results = []
         
         if fb_id.isdigit():
-            # PRIMA CERCA IN USERS_MVVIDSTER - ESPLICITA
+            # Ricerca nella tabella users_mvvidster
             mvvidster_results = db.execute_query(
-                '''SELECT * FROM users_mvvidster WHERE 
-                user_id = %s OR original_id = %s OR
-                CAST(user_id AS CHAR) LIKE %s OR
-                CAST(original_id AS CHAR) LIKE %s
-                ORDER BY found_date DESC LIMIT 10''',
-                (int(fb_id), int(fb_id), f'%{fb_id}%', f'%{fb_id}%'),
+                '''SELECT * FROM users_mvvidster WHERE user_id = %s''',
+                (fb_id,),
                 fetchall=True
             )
             
@@ -2052,17 +1861,13 @@ class LeakSearchAPI:
                     'email': row[5],
                     'registration_date': row[3],
                     'profile_photo_id': row[4],
-                    'original_id': row[6],
-                    'phone': row[7] if len(row) > 7 else None,
-                    'city': row[8] if len(row) > 8 else None,
-                    'country': row[9] if len(row) > 9 else None,
-                    'status': row[10] if len(row) > 10 else None
+                    'original_id': row[6]
                 })
             
             # Ricerca nel database TiDB (tabella facebook_leaks mantenuta per compatibilità)
             fb_results = db.execute_query(
-                '''SELECT * FROM facebook_leaks WHERE facebook_id = %s OR facebook_id LIKE %s''',
-                (fb_id, f'%{fb_id}%'),
+                '''SELECT * FROM facebook_leaks WHERE facebook_id = %s''',
+                (fb_id,),
                 fetchall=True
             )
             
@@ -2648,6 +2453,7 @@ Il cambio lingua influenzerà:
         else:
             await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
+
     async def show_shop_interface(self, update: Update, context: CallbackContext):
         """Mostra l'interfaccia di acquisto crediti con prezzi interi"""
         user_id = update.effective_user.id
@@ -2815,6 +2621,7 @@ https://www.paypal.me/BotAi36
             await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
         else:
             await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
     
     async def start(self, update: Update, context: CallbackContext):
         """Comando start - Mostra il menu principale con interfaccia"""
@@ -2832,7 +2639,6 @@ https://www.paypal.me/BotAi36
             'hashes': [],
             'documents': [],
             'addresses': [],
-            'ids': [],  # Aggiunto per ID numerici
             'other': []
         }
         
@@ -2843,14 +2649,12 @@ https://www.paypal.me/BotAi36
         ip_pattern = r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b'
         hash_pattern = r'\b[a-fA-F0-9]{32}\b|\b[a-fA-F0-9]{40}\b|\b[a-fA-F0-9]{64}\b'
         document_pattern = r'\b[A-Z]{2}\d{7}\b|\b\d{9}\b|\b[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]\b|\b[A-Z]{2}\d{5}[A-Z]{2}\d{4}\b'
-        id_pattern = r'\b\d{4,10}\b'  # ID numerici da 4 a 10 cifre
         
         components['emails'] = re.findall(email_pattern, query, re.IGNORECASE)
         components['phones'] = re.findall(phone_pattern, query)
         components['ips'] = re.findall(ip_pattern, query)
         components['hashes'] = re.findall(hash_pattern, query)
         components['documents'] = re.findall(document_pattern, query, re.IGNORECASE)
-        components['ids'] = re.findall(id_pattern, query)
         
         remaining_query = query
         
@@ -2868,9 +2672,6 @@ https://www.paypal.me/BotAi36
         
         for doc in components['documents']:
             remaining_query = remaining_query.replace(doc, '')
-        
-        for id_val in components['ids']:
-            remaining_query = remaining_query.replace(id_val, '')
         
         password_pattern = r'\b[a-zA-Z0-9_@#$%^&*!]{6,30}\b'
         password_candidates = re.findall(password_pattern, remaining_query)
@@ -2904,10 +2705,7 @@ https://www.paypal.me/BotAi36
         
         for part in remaining_parts:
             if len(part) <= 30 and ' ' not in part:
-                if part.isdigit() and 4 <= len(part) <= 10:
-                    components['ids'].append(part)
-                else:
-                    components['usernames'].append(part)
+                components['usernames'].append(part)
             else:
                 components['names'].append(part)
         
@@ -2931,7 +2729,7 @@ https://www.paypal.me/BotAi36
         return components
 
     def detect_search_type(self, query: str) -> str:
-        """Determina automaticamente il tipo di ricerca - AGGIORNATO PER ID"""
+        """Determina automaticamente il tipo di ricerca"""
         query_lower = query.lower()
         
         if '@' in query:
@@ -2947,11 +2745,6 @@ https://www.paypal.me/BotAi36
         
         if self.api.is_document_number(query):
             return 'document'
-        
-        # CONTROLLA SE È UN ID NUMERICO (4-10 cifre)
-        if query.isdigit() and 4 <= len(query) <= 10:
-            # Verifica se potrebbe essere un ID
-            return 'id'
         
         address_indicators = ['via', 'viale', 'piazza', 'corso', 'largo', 'vicolo', 'strada',
                              'street', 'avenue', 'boulevard', 'road', 'lane', 'drive']
@@ -2975,7 +2768,7 @@ https://www.paypal.me/BotAi36
         return 'name'
     
     async def handle_message(self, update: Update, context: CallbackContext):
-        """Gestisce tutti i messaggi di ricerca - Supporta query composte - AGGIORNATO"""
+        """Gestisce tutti i messaggi di ricerca - Supporta query composte"""
         user_id = update.effective_user.id
         query = update.message.text.strip()
         
@@ -3040,8 +2833,6 @@ https://www.paypal.me/BotAi36
                     await self.search_address_exact(update, msg, query, user_id, data_italiana)
                 elif search_type == 'facebook':
                     await self.search_facebook_complete(update, msg, query, user_id, data_italiana)
-                elif search_type == 'id':
-                    await self.search_id_exact(update, msg, query, user_id, data_italiana)  # NUOVA FUNZIONE
                 else:
                     await self.search_composite_advanced(update, msg, query, user_id, data_italiana)
             
@@ -3060,94 +2851,8 @@ Errore: {str(e)[:100]}
             except:
                 await update.message.reply_text(error_text)
     
-    async def search_id_exact(self, update: Update, msg, search_id: str, user_id: int, data_italiana: str):
-        """Ricerca per ID - NUOVA FUNZIONE PER CERCARE ID"""
-        # PRIMA CERCA IN USERS_MVVIDSTER
-        mvvidster_results = await self.api.search_mvvidster_by_id(search_id)
-        
-        now = datetime.now()
-        result_text = f"""🔍 RICERCA PER ID
-- ID: {search_id} - Analisi utente"""
-        
-        if mvvidster_results['found']:
-            result_text += f"\n\n✅ TROVATO IN USERS_MVVIDSTER: {mvvidster_results['count']} record"
-            
-            for i, result in enumerate(mvvidster_results['results'][:5], 1):
-                result_text += f"\n\n  {i}. 👤 {result.get('display_name', 'N/A')}"
-                result_text += f"\n     🆔 User ID: {result.get('user_id', 'N/A')}"
-                
-                if result.get('original_id'):
-                    result_text += f"\n     🔗 Original ID: {result['original_id']}"
-                
-                if result.get('email'):
-                    result_text += f"\n     📧 Email: {result['email']}"
-                
-                if result.get('phone'):
-                    result_text += f"\n     📱 Telefono: {result['phone']}"
-                
-                if result.get('registration_date'):
-                    result_text += f"\n     📅 Data registrazione: {result['registration_date']}"
-                
-                if result.get('city') or result.get('country'):
-                    result_text += f"\n     🌍 Posizione: "
-                    if result.get('city'):
-                        result_text += f"{result['city']}"
-                    if result.get('country'):
-                        result_text += f", {result['country']}"
-                
-                if result.get('status'):
-                    result_text += f"\n     📊 Status: {result['status']}"
-                
-                if result.get('profile_photo_id'):
-                    result_text += f"\n     🖼️ Foto profilo: ID {result['profile_photo_id']}"
-        
-        # Cerca anche in altri database
-        if DEHASHED_API_KEY:
-            try:
-                auth = base64.b64encode(f"{DEHASHED_EMAIL}:{DEHASHED_API_KEY}".encode()).decode()
-                headers = {'Authorization': f'Basic {auth}'}
-                response = self.api.session.get(
-                    f'https://api.dehashed.com/search?query={quote_plus(search_id)}',
-                    headers=headers, timeout=15
-                )
-                if response.status_code == 200:
-                    data = response.json()
-                    if data.get('entries'):
-                        result_text += f"\n\n🔓 TROVATO IN DATABASE ESTERNI:"
-                        for entry in data['entries'][:3]:
-                            result_text += f"\n  - {entry.get('database_name', 'Unknown')}"
-                            if entry.get('email'):
-                                result_text += f"\n    📧 Email: {entry['email']}"
-                            if entry.get('password'):
-                                result_text += f"\n    🔐 Password: {entry['password']}"
-            except Exception as e:
-                logger.error(f"Dehashed ID error: {e}")
-        
-        if not mvvidster_results['found']:
-            user_lang = self.get_user_language(user_id)
-            result_text += f"\n\n{translations[user_lang]['no_results']}"
-            result_text += f"\n🔍 ID non trovato nel database users_mvvidster."
-            result_text += f"\n\n💡 SUGGERIMENTI:"
-            result_text += f"\n  - Prova a cercare come email: potrebbe essere associato"
-            result_text += f"\n  - Cerca come username/nome"
-            result_text += f"\n  - Verifica se è un numero di telefono"
-        
-        user_lang = self.get_user_language(user_id)
-        result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
-        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
-        result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
-        result_text += f"\n\n{data_italiana}"
-        
-        try:
-            await msg.edit_text(result_text)
-        except:
-            await msg.delete()
-            parts = [result_text[i:i+4000] for i in range(0, len(result_text), 4000)]
-            for part in parts:
-                await update.message.reply_text(part)
-    
     async def search_composite_advanced(self, update: Update, msg, query: str, user_id: int, data_italiana: str):
-        """Ricerca composta avanzata - Supporta query con più informazioni - AGGIORNATO"""
+        """Ricerca composta avanzata - Supporta query con più informazioni"""
         components = self.parse_composite_query(query)
         
         now = datetime.now()
@@ -3155,20 +2860,6 @@ Errore: {str(e)[:100]}
 - Query: {query}"""
         
         all_results = []
-        
-        if components['ids']:
-            result_text += f"\n\n🆔 ID TROVATI: {len(components['ids'])}"
-            for i, search_id in enumerate(components['ids'][:3], 1):
-                result_text += f"\n  {i}. {search_id}"
-                id_results = await self.api.search_mvvidster_by_id(search_id)
-                if id_results['found']:
-                    result_text += f"\n     ✅ Trovato in {id_results['count']} record users_mvvidster"
-                    if id_results['results']:
-                        first_result = id_results['results'][0]
-                        if first_result.get('display_name'):
-                            result_text += f"\n     👤 Nome: {first_result['display_name']}"
-                        if first_result.get('email'):
-                            result_text += f"\n     📧 Email: {first_result['email']}"
         
         if components['emails']:
             result_text += f"\n\n📧 EMAIL TROVATE: {len(components['emails'])}"
@@ -3217,10 +2908,13 @@ Errore: {str(e)[:100]}
             for i, username in enumerate(components['usernames'][:3], 1):
                 result_text += f"\n  {i}. {username}"
                 social_results = await self.api.search_username(username)
-                if social_results['mvvidster_count'] > 0:
-                    result_text += f"\n     ✅ {social_results['mvvidster_count']} record users_mvvidster"
                 if social_results['social_count'] > 0:
-                    result_text += f"\n     📱 {social_results['social_count']} account social"
+                    result_text += f"\n     ✅ {social_results['social_count']} account social"
+            
+            for social in social_results['social']:
+                platform = social['platform']
+                url = social['url']
+                result_text += f"\n     - {platform}: {url}"
         
         if components['ips']:
             result_text += f"\n\n🌐 IP TROVATI: {len(components['ips'])}"
@@ -3302,10 +2996,6 @@ Errore: {str(e)[:100]}
                 work_results = await self.api.search_work_address(query)
                 if home_results['found'] or work_results['found']:
                     result_text += f"\n✅ Indirizzo trovato"
-            elif search_type == 'id':
-                id_results = await self.api.search_mvvidster_by_id(query)
-                if id_results['found']:
-                    result_text += f"\n✅ ID trovato in {id_results['count']} record"
             else:
                 variant_results = await self.api.search_variants(query)
                 found_any = any(len(v) > 0 for v in variant_results.values())
@@ -3318,32 +3008,43 @@ Errore: {str(e)[:100]}
             
             correlations = []
             
-            if components['ids'] and components['emails']:
-                for search_id in components['ids'][:1]:
-                    for email in components['emails'][:1]:
+            if components['emails'] and components['phones']:
+                for email in components['emails'][:1]:
+                    for phone in components['phones'][:1]:
                         count = db.execute_query(
-                            '''SELECT COUNT(*) FROM users_mvvidster WHERE 
-                            (user_id = %s OR original_id = %s) AND 
-                            email LIKE %s''',
-                            (int(search_id), int(search_id), f'%{email}%'),
+                            '''SELECT COUNT(*) FROM breach_data WHERE 
+                            (email = %s OR phone = %s) AND 
+                            (email = %s OR phone = %s)''',
+                            (email, email, phone, phone),
                             fetchone=True
                         )[0]
                         if count > 0:
-                            correlations.append(f"🆔 {search_id} ↔ 📧 {email}")
+                            correlations.append(f"📧 {email} ↔ 📱 {phone}")
             
-            if components['ids'] and components['phones']:
-                for search_id in components['ids'][:1]:
+            if components['names'] and components['phones']:
+                for name in components['names'][:1]:
                     for phone in components['phones'][:1]:
                         phone_clean = re.sub(r'[^\d+]', '', phone)[-10:]
                         count = db.execute_query(
-                            '''SELECT COUNT(*) FROM users_mvvidster WHERE 
-                            (user_id = %s OR original_id = %s) AND 
-                            phone LIKE %s''',
-                            (int(search_id), int(search_id), f'%{phone_clean}%'),
+                            '''SELECT COUNT(*) FROM facebook_leaks WHERE 
+                            phone LIKE %s AND (name LIKE %s OR surname LIKE %s)''',
+                            (f'%{phone_clean}%', f'%{name[:5]}%', f'%{name[:5]}%'),
                             fetchone=True
                         )[0]
                         if count > 0:
-                            correlations.append(f"🆔 {search_id} ↔ 📱 {phone}")
+                            correlations.append(f"👤 {name[:15]}... ↔ 📱 {phone}")
+            
+            if components['documents'] and components['names']:
+                for doc in components['documents'][:1]:
+                    for name in components['names'][:1]:
+                        count = db.execute_query(
+                            '''SELECT COUNT(*) FROM addresses_documents WHERE 
+                            document_number LIKE %s AND full_name LIKE %s''',
+                            (f'%{doc}%', f'%{name}%'),
+                            fetchone=True
+                        )[0]
+                        if count > 0:
+                            correlations.append(f"📄 {doc} ↔ 👤 {name[:15]}...")
             
             if correlations:
                 for corr in correlations[:3]:
@@ -3377,58 +3078,30 @@ Errore: {str(e)[:100]}
             user_lang = self.get_user_language(user_id)
             result_text += f"\n\n✅ RISULTATI TROVATI: {search_results['count']}"
             
-            # Separa i risultati di users_mvvidster dagli altri
-            mvvidster_results = []
-            other_results = []
+            sources = {}
+            for result in search_results['results'][:15]:
+                source = result['source']
+                if source not in sources:
+                    sources[source] = []
+                sources[source].append(result)
             
-            for result in search_results['results']:
-                if result.get('source') == 'users_mvvidster':
-                    mvvidster_results.append(result)
-                else:
-                    other_results.append(result)
-            
-            if mvvidster_results:
-                result_text += f"\n\n📊 USERS_MVVIDSTER:"
-                for i, result in enumerate(mvvidster_results[:3], 1):
-                    result_text += f"\n\n  {i}. 👤 {result.get('username', 'N/A')}"
-                    result_text += f"\n     🆔 User ID: {result.get('user_id', 'N/A')}"
-                    
-                    if result.get('original_id'):
-                        result_text += f"\n     🔗 Original ID: {result['original_id']}"
-                    
-                    if result.get('registration_date'):
-                        result_text += f"\n     📅 Data registrazione: {result['registration_date']}"
-                    
-                    if result.get('phone'):
-                        result_text += f"\n     📱 Telefono: {result['phone']}"
-                    
-                    if result.get('city') or result.get('country'):
-                        result_text += f"\n     🌍 Posizione: "
-                        if result.get('city'):
-                            result_text += f"{result['city']}"
-                        if result.get('country'):
-                            result_text += f", {result['country']}"
-            
-            if other_results:
-                sources = {}
-                for result in other_results:
-                    source = result['source']
-                    if source not in sources:
-                        sources[source] = []
-                    sources[source].append(result)
-                
-                for source, entries in list(sources.items())[:2]:
-                    result_text += f"\n\n{source}:"
-                    for entry in entries[:2]:
-                        if source == 'Dehashed':
-                            result_text += f"\n  - Database: {entry.get('database', 'Unknown')}"
-                            if entry.get('password'):
-                                result_text += f"\n    🔐 Password: {entry['password']}"
-                            if entry.get('date'):
-                                result_text += f"\n    📅 Data: {entry['date']}"
-                        elif source == 'HIBP':
-                            result_text += f"\n  - Violazione: {entry.get('breach', 'Unknown')}"
-                            result_text += f"\n    📅 Data: {entry.get('date', 'Unknown')}"
+            for source, entries in list(sources.items())[:3]:
+                result_text += f"\n\n{source}:"
+                for entry in entries[:2]:
+                    if source == 'Dehashed':
+                        result_text += f"\n  - Database: {entry.get('database', 'Unknown')}"
+                        if entry.get('password'):
+                            result_text += f"\n    🔐 Password: {entry['password']}"
+                        if entry.get('date'):
+                            result_text += f"\n    📅 Data: {entry['date']}"
+                    elif source == 'HIBP':
+                        result_text += f"\n  - Violazione: {entry.get('breach', 'Unknown')}"
+                        result_text += f"\n    📅 Data: {entry.get('date', 'Unknown')}"
+                    elif source == 'users_mvvidster':
+                        result_text += f"\n  - Username: {entry.get('username', 'N/A')}"
+                        result_text += f"\n    User ID: {entry.get('user_id', 'N/A')}"
+                        if entry.get('registration_date'):
+                            result_text += f"\n    📅 Data registrazione: {entry['registration_date']}"
         
         else:
             user_lang = self.get_user_language(user_id)
@@ -3450,7 +3123,7 @@ Errore: {str(e)[:100]}
                 await update.message.reply_text(part)
     
     async def search_phone_exact(self, update: Update, msg, phone: str, user_id: int, data_italiana: str):
-        """Ricerca telefono - Formato esatto - AGGIORNATO"""
+        """Ricerca telefono - Formato esatto"""
         phone_info = {}
         try:
             parsed = phonenumbers.parse(phone, None)
@@ -3492,29 +3165,14 @@ Errore: {str(e)[:100]}
                 result_text += f"\n\n📊 USERS_MVVIDSTER:"
                 result_text += f"\n  📊 Trovati: {len(mvvidster_results)} record"
                 
-                for i, result in enumerate(mvvidster_results[:3], 1):
+                for i, result in enumerate(mvvidster_results[:2], 1):
                     result_text += f"\n\n  {i}. 👤 {result.get('username', 'N/A')}"
                     if result.get('user_id'):
                         result_text += f"\n     🆔 User ID: {result['user_id']}"
-                    
-                    if result.get('original_id'):
-                        result_text += f"\n     🔗 Original ID: {result['original_id']}"
-                    
                     if result.get('email'):
                         result_text += f"\n     📧 Email: {result['email']}"
-                    
                     if result.get('registration_date'):
                         result_text += f"\n     📅 Data registrazione: {result['registration_date']}"
-                    
-                    if result.get('phone'):
-                        result_text += f"\n     📱 Telefono: {result['phone']}"
-                    
-                    if result.get('city') or result.get('country'):
-                        result_text += f"\n     🌍 Posizione: "
-                        if result.get('city'):
-                            result_text += f"{result['city']}"
-                        if result.get('country'):
-                            result_text += f", {result['country']}"
             
             if facebook_results:
                 result_text += f"\n\n🔓 FACEBOOK LEAK 2021:"
@@ -3558,7 +3216,7 @@ Errore: {str(e)[:100]}
                 await update.message.reply_text(part)
     
     async def search_name_exact(self, update: Update, msg, name: str, user_id: int, data_italiana: str):
-        """Ricerca per nome - Formato esatto - AGGIORNATO"""
+        """Ricerca per nome - Formato esatto"""
         search_results = await self.api.search_name(name)
         username = name.split()[0] if ' ' in name else name
         social_results = await self.api.search_username(username)
@@ -3568,65 +3226,33 @@ Errore: {str(e)[:100]}
 - {name} - Cerca il nome"""
         
         if search_results['found']:
-            # Separa i risultati di users_mvvidster dagli altri
-            mvvidster_results = []
-            other_results = []
+            result_text += f"\n\n🔓 DATA BREACH TROVATI: {search_results['count']}"
             
-            for result in search_results['results']:
+            for i, result in enumerate(search_results['results'][:3], 1):
+                result_text += f"\n\n  {i}. 👤 {result.get('username', result.get('display_name', 'N/A'))}"
                 if result.get('source') == 'users_mvvidster':
-                    mvvidster_results.append(result)
-                else:
-                    other_results.append(result)
-            
-            if mvvidster_results:
-                result_text += f"\n\n📊 USERS_MVVIDSTER: {len(mvvidster_results)} record"
-                
-                for i, result in enumerate(mvvidster_results[:3], 1):
-                    result_text += f"\n\n  {i}. 👤 {result.get('username', result.get('display_name', 'N/A'))}"
                     if result.get('user_id'):
                         result_text += f"\n     🆔 User ID: {result['user_id']}"
-                    
-                    if result.get('original_id'):
-                        result_text += f"\n     🔗 Original ID: {result['original_id']}"
-                    
                     if result.get('email'):
                         result_text += f"\n     📧 Email: {result['email']}"
-                    
-                    if result.get('phone'):
-                        result_text += f"\n     📱 Telefono: {result['phone']}"
-                    
                     if result.get('registration_date'):
                         result_text += f"\n     📅 Data registrazione: {result['registration_date']}"
-            
-            if other_results:
-                result_text += f"\n\n🔓 ALTRI DATABASE:"
-                for result in other_results[:2]:
-                    if result.get('source') == 'Facebook Leak 2021':
-                        result_text += f"\n  - 📘 Facebook: {result.get('name', 'N/A')}"
-                        if result.get('phone'):
-                            result_text += f"\n    📱 Telefono: {result['phone']}"
-                        if result.get('facebook_id'):
-                            result_text += f"\n    🆔 ID: {result['facebook_id']}"
-                        if result.get('city'):
-                            result_text += f"\n    🏙️ Città: {result['city']}"
+                elif result.get('source') == 'Facebook Leak 2021':
+                    if result.get('phone'):
+                        result_text += f"\n     📱 Telefono: {result['phone']}"
+                    if result.get('facebook_id'):
+                        result_text += f"\n     📘 Facebook ID: {result['facebook_id']}"
+                    if result.get('city'):
+                        result_text += f"\n     🏙️ Città: {result['city']}"
         
-        if social_results.get('mvvidster_count', 0) > 0:
-            result_text += f"\n\n👥 USERNAME IN MVVIDSTER: {social_results['mvvidster_count']}"
-            for result in social_results.get('mvvidster', [])[:2]:
-                result_text += f"\n  - 👤 {result.get('username', 'N/A')}"
-                if result.get('user_id'):
-                    result_text += f"\n    🆔 ID: {result['user_id']}"
-                if result.get('email'):
-                    result_text += f"\n    📧 Email: {result['email']}"
-        
-        if social_results.get('social_count', 0) > 0:
+        if social_results['social_count'] > 0:
             result_text += f"\n\n📱 ACCOUNT SOCIAL TROVATI: {social_results['social_count']}"
             
-            for social in social_results.get('social', [])[:4]:
+            for social in social_results['social'][:4]:
                 platform = social['platform']
                 result_text += f"\n  - {platform}: {social['url']}"
         
-        if not search_results['found'] and social_results.get('social_count', 0) == 0:
+        if not search_results['found'] and social_results['social_count'] == 0:
             user_lang = self.get_user_language(user_id)
             result_text += f"\n\n{translations[user_lang]['no_results']}"
             result_text += f"\n👤 Il nome non è stato trovato."
@@ -3646,7 +3272,7 @@ Errore: {str(e)[:100]}
                 await update.message.reply_text(part)
     
     async def search_social_exact(self, update: Update, msg, username: str, user_id: int, data_italiana: str):
-        """Ricerca username - Formato esatto con API potenziate - AGGIORNATO"""
+        """Ricerca username - Formato esatto con API potenziate"""
         # PRIMA usa le nuove API
         search_results = await self.api.search_username(username)
         # POI ricerca avanzata
@@ -3660,39 +3286,12 @@ Errore: {str(e)[:100]}
         api_sources = search_results.get('api_sources', [])
         result_text += f"\n\n📊 FONTI UTILIZZATE: {', '.join(api_sources)}"
         
-        # PRIMA MOSTRA RISULTATI USERS_MVVIDSTER
-        if search_results.get('mvvidster_count', 0) > 0:
-            result_text += f"\n\n✅ TROVATO IN USERS_MVVIDSTER: {search_results['mvvidster_count']} record"
-            
-            for i, result in enumerate(search_results.get('mvvidster', [])[:5], 1):
-                result_text += f"\n\n  {i}. 👤 {result.get('username', result.get('display_name', 'N/A'))}"
-                result_text += f"\n     🆔 User ID: {result.get('user_id', 'N/A')}"
-                
-                if result.get('original_id'):
-                    result_text += f"\n     🔗 Original ID: {result['original_id']}"
-                
-                if result.get('email'):
-                    result_text += f"\n     📧 Email: {result['email']}"
-                
-                if result.get('phone'):
-                    result_text += f"\n     📱 Telefono: {result['phone']}"
-                
-                if result.get('registration_date'):
-                    result_text += f"\n     📅 Data registrazione: {result['registration_date']}"
-                
-                if result.get('city') or result.get('country'):
-                    result_text += f"\n     🌍 Posizione: "
-                    if result.get('city'):
-                        result_text += f"{result['city']}"
-                    if result.get('country'):
-                        result_text += f", {result['country']}"
-        
-        if search_results.get('social_count', 0) > 0:
-            result_text += f"\n\n✅ ACCOUNT SOCIAL TROVATI: {search_results['social_count']}"
+        if search_results['social_count'] > 0:
+            result_text += f"\n\n✅ ACCOUNT TROVATI: {search_results['social_count']}"
             
             # Raggruppa per piattaforma principale
             platforms = {}
-            for social in search_results.get('social', [])[:15]:
+            for social in search_results['social'][:15]:  # Limita a 15
                 platform = social['platform']
                 if platform not in platforms:
                     platforms[platform] = []
@@ -3712,16 +3311,16 @@ Errore: {str(e)[:100]}
                 if variant.get('sites'):
                     result_text += f"\n  · {variant['variant']}: {len(variant['sites'])} siti"
         
-        if search_results.get('breach_count', 0) > 0:
+        if search_results['breach_count'] > 0:
             result_text += f"\n\n🔓 DATA BREACH TROVATI: {search_results['breach_count']}"
-            for breach in search_results.get('breach', [])[:3]:
+            for breach in search_results['breach'][:3]:
                 result_text += f"\n  - {breach['source']}"
                 if breach.get('email'):
                     result_text += f"\n    📧 Email: {breach['email']}"
                 if breach.get('password'):
                     result_text += f"\n    🔐 Password: {breach['password'][:15]}..."
         
-        if search_results.get('mvvidster_count', 0) == 0 and search_results.get('social_count', 0) == 0:
+        if search_results['social_count'] == 0 and search_results['breach_count'] == 0:
             user_lang = self.get_user_language(user_id)
             result_text += f"\n\n{translations[user_lang]['no_results']}"
             result_text += f"\n👤 Username non trovato su nessuna piattaforma conosciuta."
@@ -4679,10 +4278,7 @@ Query: {query}
                         result_str = f"👤 {line}: {'✅ TROVATI' if results['found'] else '❌ NON TROVATI'} ({results['count']})"
                     elif search_type == 'username':
                         results = await self.api.search_username(line)
-                        result_str = f"👥 {line}: {'✅ TROVATI' if results['mvvidster_count'] > 0 else '❌ NON TROVATI'}"
-                    elif search_type == 'id':
-                        results = await self.api.search_mvvidster_by_id(line)
-                        result_str = f"🆔 {line}: {'✅ TROVATI' if results['found'] else '❌ NON TROVATI'} ({results['count']})"
+                        result_str = f"👥 {line}: {'✅ TROVATI' if results['social_count'] > 0 else '❌ NON TROVATI'}"
                     elif search_type == 'document':
                         results = await self.api.search_document(line)
                         result_str = f"📄 {line}: {'✅ TROVATI' if results['found'] else '❌ NON TROVATI'} ({results['count']})"
@@ -4907,25 +4503,13 @@ def load_users_mvvidster_data():
         
         logger.info("⚠️ No users_mvvidster data file found, creating sample data")
         
-        # Creare dati di esempio basati sulle immagini
+        # Creare dati di esempio
         sample_data = [
-            # Dati dall'immagine 1000029619.jpg
-            (447491, 'oszkrr', '2013-10-18 00:00:00', 0, 'oszkrrcloud@li...', None),
-            (2650679, 'Joss', None, 0, None, None),
-            
-            # Dati dall'immagine 1000029617.jpg
-            (1, 'oszkrr', None, 0, 'oszkrrcloud@li...', None),
-            
-            # Dati dall'immagine 1000029616.jpg
-            (1, None, None, 0, 'oszkrcloud@li...', None),
-            (2, None, None, 0, 'dkndfkmm@g...', None),
-            
-            # Altri dati di esempio
-            (1001, 'john_doe', '2021-05-15 10:30:00', 1, 'john.doe@example.com', 5001),
-            (1002, 'jane_smith', '2021-06-20 14:45:00', 0, 'jane.smith@example.com', 5002),
-            (1003, 'alex_wong', '2021-07-10 09:15:00', 1, 'alex.wong@example.com', 5003),
-            (1004, 'maria_garcia', '2021-08-05 16:20:00', 0, 'maria.garcia@example.com', 5004),
-            (1005, 'robert_brown', '2021-09-12 11:10:00', 1, 'robert.brown@example.com', 5005)
+            (1001, 'john_doe', '2021-05-15 10:30:00', 0, 'john.doe@example.com', None),
+            (1002, 'jane_smith', '2021-06-20 14:45:00', 0, 'jane.smith@example.com', None),
+            (1003, 'alex_wong', '2021-07-10 09:15:00', 0, 'alex.wong@example.com', None),
+            (1004, 'maria_garcia', '2021-08-05 16:20:00', 0, 'maria.garcia@example.com', None),
+            (1005, 'robert_brown', '2021-09-12 11:10:00', 0, 'robert.brown@example.com', None)
         ]
         
         for data in sample_data:
