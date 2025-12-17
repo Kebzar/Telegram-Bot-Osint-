@@ -48,7 +48,7 @@ TIDB_HOST = os.environ.get('TIDB_HOST', 'localhost')
 TIDB_PORT = os.environ.get('TIDB_PORT', '4000')
 TIDB_USER = os.environ.get('TIDB_USER', 'root')
 TIDB_PASSWORD = os.environ.get('TIDB_PASSWORD', '')
-TIDB_DATABASE = os.environ.get('TIDB_DATABASE', 'leakosint_bot')
+TIDB_DATABASE = os.environ.get('TIDB_DATABASE', 'test')
 
 # ==================== CONFIGURAZIONE API ====================
 BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
