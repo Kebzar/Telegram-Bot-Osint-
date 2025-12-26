@@ -50,6 +50,14 @@ TIDB_USER = os.environ.get('TIDB_USER', 'root')
 TIDB_PASSWORD = os.environ.get('TIDB_PASSWORD', '')
 TIDB_DATABASE = os.environ.get('TIDB_DATABASE', 'test')
 
+# ==================== CONFIGURAZIONE DATABASE WEBHOST ====================
+# Secondo database TiDB per webhost_data
+WEBHOST_HOST = os.environ.get('WEBHOST_HOST', TIDB_HOST)  # Usa stesso host se non specificato
+WEBHOST_PORT = os.environ.get('WEBHOST_PORT', TIDB_PORT)
+WEBHOST_USER = os.environ.get('WEBHOST_USER', TIDB_USER)
+WEBHOST_PASSWORD = os.environ.get('WEBHOST_PASSWORD', TIDB_PASSWORD)
+WEBHOST_DATABASE = os.environ.get('WEBHOST_DATABASE', 'webhost_data')
+
 # ==================== CONFIGURAZIONE API ====================
 BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 if not BOT_TOKEN:
@@ -228,11 +236,14 @@ translations = {
 class DatabaseManager:
     def __init__(self):
         self.connection_pool = None
+        self.webhost_connection_pool = None  # Nuovo pool per webhost_data
         self.init_connection_pool()
+        self.init_webhost_connection_pool()  # Inizializza secondo pool
         self.init_tables()
         
         # DEBUG: Verifica la tabella
         self.debug_users_mvvidster()
+        self.debug_webhost_tables()  # Debug per webhost_data
     
     def init_connection_pool(self):
         try:
@@ -252,6 +263,26 @@ class DatabaseManager:
             logger.error(f"❌ Error initializing database connection pool: {e}")
             sys.exit(1)
     
+    def init_webhost_connection_pool(self):
+        """Inizializza il pool di connessioni per il database webhost_data"""
+        try:
+            self.webhost_connection_pool = pooling.MySQLConnectionPool(
+                pool_name="webhost_pool",
+                pool_size=3,
+                pool_reset_session=True,
+                host=WEBHOST_HOST,
+                port=int(WEBHOST_PORT),
+                user=WEBHOST_USER,
+                password=WEBHOST_PASSWORD,
+                database=WEBHOST_DATABASE,
+                autocommit=False
+            )
+            logger.info("✅ Webhost database connection pool initialized")
+        except Exception as e:
+            logger.error(f"❌ Error initializing webhost database connection pool: {e}")
+            # Non blocchiamo l'app se il secondo database non è disponibile
+            self.webhost_connection_pool = None
+    
     def get_connection(self):
         try:
             return self.connection_pool.get_connection()
@@ -261,6 +292,123 @@ class DatabaseManager:
             self.init_connection_pool()
             return self.connection_pool.get_connection()
     
+    def get_webhost_connection(self):
+        """Ottiene una connessione al database webhost_data"""
+        if not self.webhost_connection_pool:
+            self.init_webhost_connection_pool()
+            if not self.webhost_connection_pool:
+                return None
+        
+        try:
+            return self.webhost_connection_pool.get_connection()
+        except Exception as e:
+            logger.error(f"❌ Error getting webhost database connection: {e}")
+            return None
+    
+    def execute_query(self, query, params=None, fetchone=False, fetchall=False, commit=False):
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        result = None
+        
+        try:
+            cursor.execute(query, params or ())
+            
+            if commit:
+                conn.commit()
+            
+            if fetchone:
+                result = cursor.fetchone()
+            elif fetchall:
+                result = cursor.fetchall()
+            else:
+                result = cursor.lastrowid if query.strip().upper().startswith('INSERT') else cursor.rowcount
+                
+        except Exception as e:
+            logger.error(f"❌ Database query error: {e}")
+            logger.error(f"Query: {query}")
+            logger.error(f"Params: {params}")
+            if conn:
+                conn.rollback()
+            raise e
+        finally:
+            cursor.close()
+            conn.close()
+        
+        return result
+    
+    def execute_webhost_query(self, query, params=None, fetchone=False, fetchall=False, commit=False):
+        """Esegue una query sul database webhost_data"""
+        conn = self.get_webhost_connection()
+        if conn is None:
+            logger.error("❌ Webhost database connection not available")
+            return None
+        
+        cursor = conn.cursor()
+        result = None
+        
+        try:
+            cursor.execute(query, params or ())
+            
+            if commit:
+                conn.commit()
+            
+            if fetchone:
+                result = cursor.fetchone()
+            elif fetchall:
+                result = cursor.fetchall()
+            else:
+                result = cursor.lastrowid if query.strip().upper().startswith('INSERT') else cursor.rowcount
+                
+        except Exception as e:
+            logger.error(f"❌ Webhost database query error: {e}")
+            logger.error(f"Query: {query}")
+            logger.error(f"Params: {params}")
+            if conn:
+                conn.rollback()
+        finally:
+            cursor.close()
+            conn.close()
+        
+        return result
+
+    def debug_webhost_tables(self):
+        """Debug delle tabelle nel database webhost_data"""
+        try:
+            conn = self.get_webhost_connection()
+            if conn is None:
+                logger.error("❌ Cannot connect to webhost database for debug")
+                return
+            
+            cursor = conn.cursor()
+            
+            # Ottieni tutte le tabelle
+            cursor.execute("SHOW TABLES")
+            tables = cursor.fetchall()
+            
+            logger.info("📋 Tabelle nel database webhost_data:")
+            for table in tables:
+                table_name = table[0]
+                logger.info(f"  - {table_name}")
+                
+                # Descrivi la tabella
+                cursor.execute(f"DESCRIBE {table_name}")
+                columns = cursor.fetchall()
+                
+                logger.info(f"    Colonne di {table_name}:")
+                for col in columns:
+                    logger.info(f"      - {col[0]}: {col[1]}")
+                
+                # Conta i record
+                cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+                count = cursor.fetchone()[0]
+                logger.info(f"    Record totali: {count}")
+            
+            cursor.close()
+            conn.close()
+            
+        except Exception as e:
+            logger.error(f"❌ Errore debug webhost tables: {e}")
+
     def init_tables(self):
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -373,37 +521,6 @@ class DatabaseManager:
             cursor.close()
             conn.close()
     
-    def execute_query(self, query, params=None, fetchone=False, fetchall=False, commit=False):
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        result = None
-        
-        try:
-            cursor.execute(query, params or ())
-            
-            if commit:
-                conn.commit()
-            
-            if fetchone:
-                result = cursor.fetchone()
-            elif fetchall:
-                result = cursor.fetchall()
-            else:
-                result = cursor.lastrowid if query.strip().upper().startswith('INSERT') else cursor.rowcount
-                
-        except Exception as e:
-            logger.error(f"❌ Database query error: {e}")
-            logger.error(f"Query: {query}")
-            logger.error(f"Params: {params}")
-            if conn:
-                conn.rollback()
-            raise e
-        finally:
-            cursor.close()
-            conn.close()
-        
-        return result
-
     def debug_users_mvvidster(self):
         """Debug della tabella users_mvvidster"""
         try:
@@ -470,6 +587,266 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Errore ricerca users_mvvidster: {e}")
             return []
+
+    def search_webhost_data(self, search_term: str):
+        """Cerca nei database webhost_data in tutte le tabelle e colonne"""
+        results = []
+        
+        try:
+            conn = self.get_webhost_connection()
+            if conn is None:
+                return results
+            
+            cursor = conn.cursor()
+            
+            # Ottieni tutte le tabelle
+            cursor.execute("SHOW TABLES")
+            tables = [table[0] for table in cursor.fetchall()]
+            
+            search_pattern = f'%{search_term}%'
+            
+            for table in tables:
+                try:
+                    # Ottieni le colonne della tabella
+                    cursor.execute(f"SHOW COLUMNS FROM {table}")
+                    columns = [column[0] for column in cursor.fetchall()]
+                    
+                    # Costruisci la query per cercare in tutte le colonne
+                    if columns:
+                        # Filtra solo colonne di tipo testo (varchar, text, ecc.)
+                        text_columns = []
+                        for col in columns:
+                            cursor.execute(f"SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = %s AND COLUMN_NAME = %s", (table, col))
+                            data_type = cursor.fetchone()
+                            if data_type and any(t in data_type[0].lower() for t in ['char', 'text', 'varchar']):
+                                text_columns.append(col)
+                        
+                        if text_columns:
+                            # Crea le condizioni OR per ogni colonna di testo
+                            conditions = " OR ".join([f"{col} LIKE %s" for col in text_columns])
+                            query = f"SELECT * FROM {table} WHERE {conditions} LIMIT 10"
+                            
+                            # Parametri: search_pattern per ogni colonna
+                            params = [search_pattern] * len(text_columns)
+                            
+                            cursor.execute(query, params)
+                            rows = cursor.fetchall()
+                            
+                            for row in rows:
+                                result = {
+                                    'source': 'webhost_data',
+                                    'table': table,
+                                    'search_term': search_term,
+                                    'data': {}
+                                }
+                                
+                                # Aggiungi tutti i valori delle colonne
+                                for i, col in enumerate(columns):
+                                    if i < len(row):
+                                        result['data'][col] = row[i]
+                                
+                                results.append(result)
+                                
+                except Exception as e:
+                    logger.error(f"Errore ricerca nella tabella {table}: {e}")
+                    continue
+            
+            cursor.close()
+            conn.close()
+            
+        except Exception as e:
+            logger.error(f"Errore ricerca webhost_data: {e}")
+        
+        return results
+
+    def search_webhost_by_email(self, email: str):
+        """Cerca email specifica nel database webhost_data"""
+        results = []
+        
+        try:
+            conn = self.get_webhost_connection()
+            if conn is None:
+                return results
+            
+            cursor = conn.cursor()
+            
+            # Ottieni tutte le tabelle
+            cursor.execute("SHOW TABLES")
+            tables = [table[0] for table in cursor.fetchall()]
+            
+            email_pattern = f'%{email}%'
+            
+            for table in tables:
+                try:
+                    # Verifica se la tabella ha una colonna email
+                    cursor.execute(f"SHOW COLUMNS FROM {table} LIKE '%email%'")
+                    email_columns = cursor.fetchall()
+                    
+                    if email_columns:
+                        # Cerca in tutte le colonne che contengono 'email' nel nome
+                        for col_info in email_columns:
+                            col_name = col_info[0]
+                            query = f"SELECT * FROM {table} WHERE {col_name} LIKE %s LIMIT 10"
+                            cursor.execute(query, (email_pattern,))
+                            rows = cursor.fetchall()
+                            
+                            # Ottieni tutti i nomi delle colonne per questa tabella
+                            cursor.execute(f"DESCRIBE {table}")
+                            all_columns = [col[0] for col in cursor.fetchall()]
+                            
+                            for row in rows:
+                                result = {
+                                    'source': 'webhost_data',
+                                    'table': table,
+                                    'type': 'email',
+                                    'email': email,
+                                    'data': {}
+                                }
+                                
+                                # Aggiungi tutti i valori delle colonne
+                                for i, col in enumerate(all_columns):
+                                    if i < len(row):
+                                        result['data'][col] = row[i]
+                                
+                                results.append(result)
+                                
+                except Exception as e:
+                    logger.error(f"Errore ricerca email nella tabella {table}: {e}")
+                    continue
+            
+            cursor.close()
+            conn.close()
+            
+        except Exception as e:
+            logger.error(f"Errore ricerca webhost_by_email: {e}")
+        
+        return results
+
+    def search_webhost_by_username(self, username: str):
+        """Cerca username specifico nel database webhost_data"""
+        results = []
+        
+        try:
+            conn = self.get_webhost_connection()
+            if conn is None:
+                return results
+            
+            cursor = conn.cursor()
+            
+            # Ottieni tutte le tabelle
+            cursor.execute("SHOW TABLES")
+            tables = [table[0] for table in cursor.fetchall()]
+            
+            username_pattern = f'%{username}%'
+            
+            for table in tables:
+                try:
+                    # Verifica se la tabella ha una colonna username
+                    cursor.execute(f"SHOW COLUMNS FROM {table} WHERE Field LIKE '%username%' OR Field LIKE '%user%'")
+                    username_columns = cursor.fetchall()
+                    
+                    if username_columns:
+                        # Cerca in tutte le colonne che contengono 'username' o 'user' nel nome
+                        for col_info in username_columns:
+                            col_name = col_info[0]
+                            query = f"SELECT * FROM {table} WHERE {col_name} LIKE %s LIMIT 10"
+                            cursor.execute(query, (username_pattern,))
+                            rows = cursor.fetchall()
+                            
+                            # Ottieni tutti i nomi delle colonne per questa tabella
+                            cursor.execute(f"DESCRIBE {table}")
+                            all_columns = [col[0] for col in cursor.fetchall()]
+                            
+                            for row in rows:
+                                result = {
+                                    'source': 'webhost_data',
+                                    'table': table,
+                                    'type': 'username',
+                                    'username': username,
+                                    'data': {}
+                                }
+                                
+                                # Aggiungi tutti i valori delle colonne
+                                for i, col in enumerate(all_columns):
+                                    if i < len(row):
+                                        result['data'][col] = row[i]
+                                
+                                results.append(result)
+                                
+                except Exception as e:
+                    logger.error(f"Errore ricerca username nella tabella {table}: {e}")
+                    continue
+            
+            cursor.close()
+            conn.close()
+            
+        except Exception as e:
+            logger.error(f"Errore ricerca webhost_by_username: {e}")
+        
+        return results
+
+    def search_webhost_by_ip(self, ip: str):
+        """Cerca indirizzo IP specifico nel database webhost_data"""
+        results = []
+        
+        try:
+            conn = self.get_webhost_connection()
+            if conn is None:
+                return results
+            
+            cursor = conn.cursor()
+            
+            # Ottieni tutte le tabelle
+            cursor.execute("SHOW TABLES")
+            tables = [table[0] for table in cursor.fetchall()]
+            
+            ip_pattern = f'%{ip}%'
+            
+            for table in tables:
+                try:
+                    # Verifica se la tabella ha una colonna ip_address
+                    cursor.execute(f"SHOW COLUMNS FROM {table} WHERE Field LIKE '%ip%'")
+                    ip_columns = cursor.fetchall()
+                    
+                    if ip_columns:
+                        # Cerca in tutte le colonne che contengono 'ip' nel nome
+                        for col_info in ip_columns:
+                            col_name = col_info[0]
+                            query = f"SELECT * FROM {table} WHERE {col_name} LIKE %s LIMIT 10"
+                            cursor.execute(query, (ip_pattern,))
+                            rows = cursor.fetchall()
+                            
+                            # Ottieni tutti i nomi delle colonne per questa tabella
+                            cursor.execute(f"DESCRIBE {table}")
+                            all_columns = [col[0] for col in cursor.fetchall()]
+                            
+                            for row in rows:
+                                result = {
+                                    'source': 'webhost_data',
+                                    'table': table,
+                                    'type': 'ip',
+                                    'ip_address': ip,
+                                    'data': {}
+                                }
+                                
+                                # Aggiungi tutti i valori delle colonne
+                                for i, col in enumerate(all_columns):
+                                    if i < len(row):
+                                        result['data'][col] = row[i]
+                                
+                                results.append(result)
+                                
+                except Exception as e:
+                    logger.error(f"Errore ricerca IP nella tabella {table}: {e}")
+                    continue
+            
+            cursor.close()
+            conn.close()
+            
+        except Exception as e:
+            logger.error(f"Errore ricerca webhost_by_ip: {e}")
+        
+        return results
 
 # Initialize database manager
 db = DatabaseManager()
@@ -563,6 +940,17 @@ class LeakSearchAPI:
                 'original_id': row[6],
                 'city': row[8] if len(row) > 8 else None,
                 'country': row[9] if len(row) > 9 else None
+            })
+        
+        # Cerca nel database webhost_data
+        webhost_results = db.search_webhost_by_email(email_clean)
+        for result in webhost_results:
+            results.append({
+                'source': 'webhost_data',
+                'type': 'email',
+                'email': result['email'],
+                'table': result['table'],
+                'data': result['data']
             })
         
         if HIBP_API_KEY:
@@ -737,6 +1125,17 @@ class LeakSearchAPI:
                 'original_id': row[6],
                 'city': row[8] if len(row) > 8 else None,
                 'country': row[9] if len(row) > 9 else None
+            })
+        
+        # Cerca nel database webhost_data
+        webhost_results = db.search_webhost_data(name)
+        for result in webhost_results:
+            results.append({
+                'source': 'webhost_data',
+                'type': 'name',
+                'search_term': name,
+                'table': result['table'],
+                'data': result['data']
             })
         
         parts = name.split()
@@ -962,6 +1361,17 @@ class LeakSearchAPI:
                 'registration_date': row[3]
             })
         
+        # Cerca nel database webhost_data
+        webhost_results = db.search_webhost_data(address_clean)
+        for result in webhost_results:
+            results.append({
+                'source': 'webhost_data',
+                'address_type': 'general',
+                'search_term': address_clean,
+                'table': result['table'],
+                'data': result['data']
+            })
+        
         # Cerca anche nella tabella facebook_leaks (se esiste ancora)
         fb_results = db.execute_query(
             '''SELECT * FROM facebook_leaks WHERE 
@@ -1038,6 +1448,17 @@ class LeakSearchAPI:
                     'email': row[9]
                 })
         
+        # Cerca nel database webhost_data
+        webhost_results = db.search_webhost_data(address_clean)
+        for result in webhost_results:
+            results.append({
+                'source': 'webhost_data',
+                'address_type': 'work',
+                'search_term': address_clean,
+                'table': result['table'],
+                'data': result['data']
+            })
+        
         # Cerca nella tabella facebook_leaks (se esiste ancora)
         fb_results = db.execute_query(
             '''SELECT * FROM facebook_leaks WHERE 
@@ -1108,6 +1529,17 @@ class LeakSearchAPI:
                 'registration_date': row[3],
                 'profile_photo_id': row[4],
                 'original_id': row[6]
+            })
+        
+        # Cerca nel database webhost_data
+        webhost_results = db.search_webhost_data(phone_clean)
+        for result in webhost_results:
+            results.append({
+                'source': 'webhost_data',
+                'type': 'phone',
+                'phone': phone_clean,
+                'table': result['table'],
+                'data': result['data']
             })
         
         if DEHASHED_API_KEY:
@@ -1196,6 +1628,17 @@ class LeakSearchAPI:
                 'registration_date': row[3],
                 'profile_photo_id': row[4],
                 'original_id': row[6]
+            })
+        
+        # Cerca nel database webhost_data
+        webhost_results = db.search_webhost_by_username(username)
+        for result in webhost_results:
+            results.append({
+                'source': 'webhost_data',
+                'type': 'username',
+                'username': username,
+                'table': result['table'],
+                'data': result['data']
             })
         
         social_results = []
@@ -1418,6 +1861,15 @@ class LeakSearchAPI:
         """Ricerca informazioni IP"""
         info = {}
         
+        # Cerca nel database webhost_data
+        webhost_results = db.search_webhost_by_ip(ip)
+        if webhost_results:
+            info['webhost_data'] = {
+                'found': True,
+                'count': len(webhost_results),
+                'results': webhost_results[:5]  # Limita a 5 risultati
+            }
+        
         if IPINFO_API_KEY:
             try:
                 response = self.session.get(
@@ -1461,6 +1913,17 @@ class LeakSearchAPI:
         """Ricerca password in data breach"""
         results = []
         
+        # Cerca nel database webhost_data
+        webhost_results = db.search_webhost_data(password)
+        for result in webhost_results:
+            results.append({
+                'source': 'webhost_data',
+                'type': 'password',
+                'password': password,
+                'table': result['table'],
+                'data': result['data']
+            })
+        
         if DEHASHED_API_KEY:
             try:
                 auth = base64.b64encode(f"{DEHASHED_EMAIL}:{DEHASHED_API_KEY}".encode()).decode()
@@ -1497,6 +1960,17 @@ class LeakSearchAPI:
             hash_type = "SHA1"
         elif len(hash_str) == 64 and re.match(r'^[a-f0-9]{64}$', hash_str):
             hash_type = "SHA256"
+        
+        # Cerca nel database webhost_data
+        webhost_results = db.search_webhost_data(hash_str)
+        for result in webhost_results:
+            results.append({
+                'source': 'webhost_data',
+                'type': 'hash',
+                'hash': hash_str,
+                'table': result['table'],
+                'data': result['data']
+            })
         
         if DEHASHED_API_KEY:
             try:
@@ -1782,6 +2256,16 @@ class LeakSearchAPI:
                 'original_id': row[6]
             })
         
+        # Ricerca nel database webhost_data
+        webhost_results = db.search_webhost_data(query)
+        for result in webhost_results:
+            results['leak_data'].append({
+                'type': 'webhost_data',
+                'source': 'webhost_data',
+                'table': result['table'],
+                'data': result['data']
+            })
+        
         if FACEBOOK_GRAPH_API_KEY and ' ' in query:
             try:
                 parts = query.split()
@@ -1910,6 +2394,17 @@ class LeakSearchAPI:
                 'leak_date': row[11]
             })
         
+        # Ricerca nel database webhost_data
+        webhost_results = db.search_webhost_data(phone_clean)
+        for result in webhost_results:
+            results.append({
+                'source': 'webhost_data',
+                'type': 'phone',
+                'phone': phone_clean,
+                'table': result['table'],
+                'data': result['data']
+            })
+        
         if SNUSBASE_API_KEY:
             try:
                 headers = {'Auth': SNUSBASE_API_KEY}
@@ -1957,6 +2452,17 @@ class LeakSearchAPI:
                 'registration_date': row[3],
                 'profile_photo_id': row[4],
                 'original_id': row[6]
+            })
+        
+        # Ricerca nel database webhost_data
+        webhost_results = db.search_webhost_by_email(facebook_email)
+        for result in webhost_results:
+            results.append({
+                'source': 'webhost_data',
+                'type': 'email',
+                'email': facebook_email,
+                'table': result['table'],
+                'data': result['data']
             })
         
         if DEHASHED_API_KEY:
@@ -2050,6 +2556,17 @@ class LeakSearchAPI:
                     'country': row[8]
                 })
             
+            # Ricerca nel database webhost_data
+            webhost_results = db.search_webhost_data(fb_id)
+            for result in webhost_results:
+                results.append({
+                    'source': 'webhost_data',
+                    'type': 'id',
+                    'id': fb_id,
+                    'table': result['table'],
+                    'data': result['data']
+                })
+            
             try:
                 profile_url = f'https://facebook.com/{fb_id}'
                 response = self.session.get(profile_url, timeout=10, allow_redirects=True)
@@ -2068,6 +2585,81 @@ class LeakSearchAPI:
                         })
             except Exception as e:
                 logger.error(f"Facebook ID profile error: {e}")
+        
+        return {'found': len(results) > 0, 'results': results, 'count': len(results)}
+    
+    async def search_webhost_complete(self, search_term: str) -> Dict:
+        """Ricerca completa nel database webhost_data"""
+        results = []
+        
+        # Cerca in tutti i campi del database webhost_data
+        webhost_results = db.search_webhost_data(search_term)
+        
+        for result in webhost_results:
+            results.append({
+                'source': 'webhost_data',
+                'type': 'general_search',
+                'search_term': search_term,
+                'table': result['table'],
+                'data': result['data']
+            })
+        
+        # Ricerca specifica per email
+        if '@' in search_term:
+            email_results = db.search_webhost_by_email(search_term)
+            for result in email_results:
+                # Evita duplicati
+                duplicate = False
+                for existing in results:
+                    if existing.get('table') == result['table'] and existing.get('data') == result['data']:
+                        duplicate = True
+                        break
+                if not duplicate:
+                    results.append({
+                        'source': 'webhost_data',
+                        'type': 'email',
+                        'email': search_term,
+                        'table': result['table'],
+                        'data': result['data']
+                    })
+        
+        # Ricerca specifica per username
+        elif len(search_term) <= 30 and ' ' not in search_term:
+            username_results = db.search_webhost_by_username(search_term)
+            for result in username_results:
+                # Evita duplicati
+                duplicate = False
+                for existing in results:
+                    if existing.get('table') == result['table'] and existing.get('data') == result['data']:
+                        duplicate = True
+                        break
+                if not duplicate:
+                    results.append({
+                        'source': 'webhost_data',
+                        'type': 'username',
+                        'username': search_term,
+                        'table': result['table'],
+                        'data': result['data']
+                    })
+        
+        # Ricerca specifica per IP
+        elif self.is_ip(search_term):
+            ip_results = db.search_webhost_by_ip(search_term)
+            for result in ip_results:
+                # Evita duplicati
+                duplicate = False
+                for existing in results:
+                    if existing.get('table') == result['table'] and existing.get('data') == result['data']:
+                        duplicate = True
+                        break
+                if not duplicate:
+                    results.append({
+                        'source': 'webhost_data',
+                        'type': 'ip',
+                        'ip_address': search_term,
+                        'table': result['table'],
+                        'data': result['data']
+                    })
         
         return {'found': len(results) > 0, 'results': results, 'count': len(results)}
 
@@ -2969,8 +3561,8 @@ https://www.paypal.me/BotAi36
                 elif search_type == 'facebook':
                     await self.search_facebook_complete(update, msg, query, user_id, data_italiana)
                 else:
-                    # Default: cerca tutto in MVVIDSTER
-                    await self.search_mvvidster_complete(update, msg, query, user_id, data_italiana)
+                    # Default: cerca in tutti i database
+                    await self.search_all_databases(update, msg, query, user_id, data_italiana)
             
         except Exception as e:
             logger.error(f"Search error: {e}")
@@ -2986,6 +3578,110 @@ Errore: {str(e)[:100]}
                 await msg.edit_text(error_text)
             except:
                 await update.message.reply_text(error_text)
+    
+    async def search_all_databases(self, update: Update, msg, search_term: str, user_id: int, data_italiana: str):
+        """Ricerca in tutti i database disponibili"""
+        # Cerca in MVVIDSTER
+        mvvidster_results = await self.api.search_all_fields_mvvidster(search_term)
+        
+        # Cerca in WEBHOST_DATA
+        webhost_results = await self.api.search_webhost_complete(search_term)
+        
+        now = datetime.now()
+        
+        result_text = f"""🔍 RICERCA MULTI-DATABASE
+- Termine: {search_term}
+- Database consultati: users_mvvidster, webhost_data"""
+        
+        all_unique_results = []
+        seen_ids = set()
+        
+        # Combina risultati da MVVIDSTER
+        if mvvidster_results['found']:
+            for result in mvvidster_results['results']:
+                user_id_key = result.get('user_id')
+                if user_id_key not in seen_ids:
+                    seen_ids.add(user_id_key)
+                    all_unique_results.append(result)
+        
+        # Combina risultati da WEBHOST_DATA
+        if webhost_results['found']:
+            for result in webhost_results['results']:
+                # Crea un ID unico basato sui dati
+                data_str = str(result.get('data', {}))
+                if data_str not in seen_ids:
+                    seen_ids.add(data_str)
+                    all_unique_results.append(result)
+        
+        if all_unique_results:
+            result_text += f"\n\n✅ RISULTATI TROVATI: {len(all_unique_results)}"
+            
+            mvvidster_count = sum(1 for r in all_unique_results if r.get('source') == 'users_mvvidster')
+            webhost_count = sum(1 for r in all_unique_results if r.get('source') == 'webhost_data')
+            
+            result_text += f"\n📊 Per fonte:"
+            result_text += f"\n  - users_mvvidster: {mvvidster_count} risultati"
+            result_text += f"\n  - webhost_data: {webhost_count} risultati"
+            
+            # Mostra primi risultati da ogni fonte
+            mvvidster_shown = 0
+            webhost_shown = 0
+            
+            for i, result in enumerate(all_unique_results[:15], 1):
+                source = result.get('source', 'Unknown')
+                
+                if source == 'users_mvvidster':
+                    mvvidster_shown += 1
+                    result_text += f"\n\n  {i}. [MVVIDSTER] 👤 {result.get('username', result.get('display_name', 'N/A'))}"
+                    
+                    if result.get('email'):
+                        result_text += f"\n     📧 Email: {result['email']}"
+                    
+                    if result.get('user_id'):
+                        result_text += f"\n     🆔 User ID: {result['user_id']}"
+                    
+                    if result.get('registration_date'):
+                        result_text += f"\n     📅 Data registrazione: {result['registration_date']}"
+                
+                elif source == 'webhost_data':
+                    webhost_shown += 1
+                    table = result.get('table', 'Unknown')
+                    data = result.get('data', {})
+                    
+                    result_text += f"\n\n  {i}. [WEBHOST] 📊 Tabella: {table}"
+                    
+                    # Mostra i dati più importanti
+                    for key, value in list(data.items())[:5]:  # Limita a 5 campi
+                        if value and str(value).strip():
+                            result_text += f"\n     📋 {key}: {value}"
+            
+            if len(all_unique_results) > 15:
+                result_text += f"\n\n📊 Altri {len(all_unique_results) - 15} risultati non mostrati..."
+        
+        else:
+            user_lang = self.get_user_language(user_id)
+            result_text += f"\n\n{translations[user_lang]['no_results']}"
+            result_text += f"\n❌ Nessun risultato trovato nei database per: {search_term}"
+            
+            result_text += f"\n\n💡 Suggerimenti:"
+            result_text += f"\n  · Prova con email completa"
+            result_text += f"\n  · Prova con username"
+            result_text += f"\n  · Prova con indirizzo IP"
+            result_text += f"\n  · Prova con password (se disponibile)"
+        
+        user_lang = self.get_user_language(user_id)
+        result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
+        result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
+        result_text += f"\n\n⏰ {now.hour:02d}:{now.minute:02d}"
+        result_text += f"\n\n{data_italiana}"
+        
+        try:
+            await msg.edit_text(result_text)
+        except:
+            await msg.delete()
+            parts = [result_text[i:i+4000] for i in range(0, len(result_text), 4000)]
+            for part in parts:
+                await update.message.reply_text(part)
     
     async def search_mvvidster_complete(self, update: Update, msg, search_term: str, user_id: int, data_italiana: str):
         """Ricerca completa nella tabella users_mvvidster"""
@@ -3325,6 +4021,15 @@ Errore: {str(e)[:100]}
                         result_text += f"\n    User ID: {entry.get('user_id', 'N/A')}"
                         if entry.get('registration_date'):
                             result_text += f"\n    📅 Data registrazione: {entry['registration_date']}"
+                    elif source == 'webhost_data':
+                        result_text += f"\n  - Tabella: {entry.get('table', 'Unknown')}"
+                        data = entry.get('data', {})
+                        if 'password' in data:
+                            result_text += f"\n    🔐 Password: {data['password'][:20]}..."
+                        if 'created_at' in data:
+                            result_text += f"\n    📅 Creato il: {data['created_at']}"
+                        if 'ip_address' in data:
+                            result_text += f"\n    🌐 IP: {data['ip_address']}"
         
         else:
             user_lang = self.get_user_language(user_id)
@@ -3374,6 +4079,7 @@ Errore: {str(e)[:100]}
         if search_results['found']:
             mvvidster_results = []
             facebook_results = []
+            webhost_results = []
             other_results = []
             
             for result in search_results['results']:
@@ -3381,6 +4087,8 @@ Errore: {str(e)[:100]}
                     mvvidster_results.append(result)
                 elif result['source'] == 'Facebook Leak 2021':
                     facebook_results.append(result)
+                elif result['source'] == 'webhost_data':
+                    webhost_results.append(result)
                 else:
                     other_results.append(result)
             
@@ -3396,6 +4104,22 @@ Errore: {str(e)[:100]}
                         result_text += f"\n     📧 Email: {result['email']}"
                     if result.get('registration_date'):
                         result_text += f"\n     📅 Data registrazione: {result['registration_date']}"
+            
+            if webhost_results:
+                result_text += f"\n\n🌐 WEBHOST_DATA:"
+                result_text += f"\n  📊 Trovati: {len(webhost_results)} record"
+                
+                for i, result in enumerate(webhost_results[:2], 1):
+                    result_text += f"\n\n  {i}. 📊 Tabella: {result.get('table', 'Unknown')}"
+                    data = result.get('data', {})
+                    if 'email' in data:
+                        result_text += f"\n     📧 Email: {data['email']}"
+                    if 'username' in data:
+                        result_text += f"\n     👤 Username: {data['username']}"
+                    if 'ip_address' in data:
+                        result_text += f"\n     🌐 IP: {data['ip_address']}"
+                    if 'password' in data:
+                        result_text += f"\n     🔐 Password: {data['password'][:20]}..."
             
             if facebook_results:
                 result_text += f"\n\n🔓 FACEBOOK LEAK 2021:"
@@ -3467,6 +4191,13 @@ Errore: {str(e)[:100]}
                         result_text += f"\n     📘 Facebook ID: {result['facebook_id']}"
                     if result.get('city'):
                         result_text += f"\n     🏙️ Città: {result['city']}"
+                elif result.get('source') == 'webhost_data':
+                    result_text += f"\n     📊 Tabella: {result.get('table', 'Unknown')}"
+                    data = result.get('data', {})
+                    if 'email' in data:
+                        result_text += f"\n     📧 Email: {data['email']}"
+                    if 'username' in data:
+                        result_text += f"\n     👤 Username: {data['username']}"
         
         if social_results['social_count'] > 0:
             result_text += f"\n\n📱 ACCOUNT SOCIAL TROVATI: {social_results['social_count']}"
@@ -3543,7 +4274,23 @@ Errore: {str(e)[:100]}
                 if breach.get('password'):
                     result_text += f"\n    🔐 Password: {breach['password'][:15]}..."
         
-        if search_results['social_count'] == 0 and search_results['breach_count'] == 0:
+        # Cerca nel database webhost_data
+        webhost_results = db.search_webhost_by_username(username)
+        if webhost_results:
+            result_text += f"\n\n🌐 WEBHOST_DATA TROVATI: {len(webhost_results)} record"
+            for i, result in enumerate(webhost_results[:3], 1):
+                result_text += f"\n\n  {i}. 📊 Tabella: {result['table']}"
+                data = result['data']
+                if 'email' in data:
+                    result_text += f"\n     📧 Email: {data['email']}"
+                if 'password' in data:
+                    result_text += f"\n     🔐 Password: {data['password'][:20]}..."
+                if 'created_at' in data:
+                    result_text += f"\n     📅 Creato il: {data['created_at']}"
+                if 'ip_address' in data:
+                    result_text += f"\n     🌐 IP: {data['ip_address']}"
+        
+        if search_results['social_count'] == 0 and search_results['breach_count'] == 0 and not webhost_results:
             user_lang = self.get_user_language(user_id)
             result_text += f"\n\n{translations[user_lang]['no_results']}"
             result_text += f"\n👤 Username non trovato su nessuna piattaforma conosciuta."
@@ -3595,6 +4342,21 @@ Errore: {str(e)[:100]}
                 ports = shodan_info['ports'][:5]
                 result_text += f"\n  - 🚪 Porte: {', '.join(map(str, ports))}"
         
+        # Mostra risultati da webhost_data
+        if search_results.get('webhost_data'):
+            webhost_info = search_results['webhost_data']
+            if webhost_info['found']:
+                result_text += f"\n\n🌐 WEBHOST_DATA TROVATI: {webhost_info['count']} record"
+                for i, result in enumerate(webhost_info['results'][:3], 1):
+                    result_text += f"\n\n  {i}. 📊 Tabella: {result['table']}"
+                    data = result['data']
+                    if 'email' in data:
+                        result_text += f"\n     📧 Email: {data['email']}"
+                    if 'username' in data:
+                        result_text += f"\n     👤 Username: {data['username']}"
+                    if 'password' in data:
+                        result_text += f"\n     🔐 Password: {data['password'][:20]}..."
+        
         user_lang = self.get_user_language(user_id)
         result_text += f"\n\n{translations[user_lang]['credits_used']} 2"
         result_text += f"\n{translations[user_lang]['balance']} {self.get_user_balance(user_id)}"
@@ -3626,11 +4388,21 @@ Errore: {str(e)[:100]}
                     emails_found.append(result['email'])
                 
                 result_text += f"\n\n  - {result['source']}"
-                result_text += f"\n    📁 Database: {result.get('database', 'Unknown')}"
-                if result.get('email'):
-                    result_text += f"\n    📧 Email: {result['email']}"
-                if result.get('date'):
-                    result_text += f"\n    📅 Data: {result['date']}"
+                if result['source'] == 'webhost_data':
+                    result_text += f"\n    📊 Tabella: {result.get('table', 'Unknown')}"
+                    data = result.get('data', {})
+                    if 'email' in data:
+                        result_text += f"\n    📧 Email: {data['email']}"
+                    if 'username' in data:
+                        result_text += f"\n    👤 Username: {data['username']}"
+                    if 'created_at' in data:
+                        result_text += f"\n    📅 Creato il: {data['created_at']}"
+                else:
+                    result_text += f"\n    📁 Database: {result.get('database', 'Unknown')}"
+                    if result.get('email'):
+                        result_text += f"\n    📧 Email: {result['email']}"
+                    if result.get('date'):
+                        result_text += f"\n    📅 Data: {result['date']}"
             
             if emails_found:
                 unique_emails = list(set(emails_found))[:2]
@@ -3680,9 +4452,17 @@ Errore: {str(e)[:100]}
             
             for result in search_results['results'][:2]:
                 result_text += f"\n\n  - {result['source']}"
-                result_text += f"\n    🔓 Password: {result['password']}"
-                if result.get('email'):
-                    result_text += f"\n    📧 Email: {result['email']}"
+                if result['source'] == 'webhost_data':
+                    result_text += f"\n    📊 Tabella: {result.get('table', 'Unknown')}"
+                    data = result.get('data', {})
+                    if 'email' in data:
+                        result_text += f"\n    📧 Email: {data['email']}"
+                    if 'username' in data:
+                        result_text += f"\n    👤 Username: {data['username']}"
+                else:
+                    result_text += f"\n    🔓 Password: {result['password']}"
+                    if result.get('email'):
+                        result_text += f"\n    📧 Email: {result['email']}"
         else:
             user_lang = self.get_user_language(user_id)
             result_text += f"\n\n{translations[user_lang]['no_results']}"
@@ -3784,9 +4564,12 @@ Errore: {str(e)[:100]}
             
             people = []
             companies = []
+            webhost_data = []
             
             for result in search_results['results'][:8]:
-                if result.get('company') or result.get('address_type') == 'work':
+                if result.get('source') == 'webhost_data':
+                    webhost_data.append(result)
+                elif result.get('company') or result.get('address_type') == 'work':
                     companies.append(result)
                 else:
                     people.append(result)
@@ -3810,6 +4593,20 @@ Errore: {str(e)[:100]}
                         result_text += f"\n     📍 Indirizzo: {company['address']}"
                     if company.get('full_name'):
                         result_text += f"\n     👤 Persona: {company['full_name']}"
+            
+            if webhost_data:
+                result_text += f"\n\n🌐 WEBHOST_DATA:"
+                for i, result in enumerate(webhost_data[:3], 1):
+                    result_text += f"\n\n  {i}. 📊 Tabella: {result.get('table', 'Unknown')}"
+                    data = result.get('data', {})
+                    if 'email' in data:
+                        result_text += f"\n     📧 Email: {data['email']}"
+                    if 'username' in data:
+                        result_text += f"\n     👤 Username: {data['username']}"
+                    if 'ip_address' in data:
+                        result_text += f"\n     🌐 IP: {data['ip_address']}"
+                    if 'password' in data:
+                        result_text += f"\n     🔐 Password: {data['password'][:20]}..."
         
         else:
             user_lang = self.get_user_language(user_id)
