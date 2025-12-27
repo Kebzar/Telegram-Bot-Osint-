@@ -14,10 +14,10 @@ from typing import Dict, List, Tuple, Optional
 from urllib.parse import quote_plus
 
 # ==================== AGGIUNTA IMPORT PER UPTIME ====================
+from flask import Flask, request, jsonify
 import threading
 import time
 import requests
-from flask import Flask, request, jsonify
 
 import phonenumbers
 from phonenumbers import carrier, geocoder, timezone
@@ -5594,12 +5594,18 @@ def load_users_mvvidster_data():
 
 # ==================== FLASK APP PER RENDER (MODIFICATA PER UPTIME) ====================
 
+# ==================== SERVER WEB PER UPTIME ====================
+
+from flask import Flask, request, jsonify
+import threading
+
+# Crea l'app Flask
 app = Flask(__name__)
 
-# Endpoint ultra-leggeri per UptimeRobot
+# Endpoint super semplice per UptimeRobot
 @app.route('/')
-def index():
-    return '🤖 LeakosintBot is running! ✅', 200
+def home():
+    return '🤖 Bot is running! ✅', 200
 
 @app.route('/health')
 def health():
@@ -5609,14 +5615,38 @@ def health():
 def ping():
     return 'PONG', 200
 
-@app.route('/status')
-def status():
-    return jsonify({
-        'status': 'online',
-        'time': datetime.now().isoformat(),
-        'service': 'telegram-bot-osint'
-    }), 200
+# Avvia Flask in un thread separato
+def run_flask():
+    try:
+        port = int(os.environ.get('PORT', 8080))
+        app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False, threaded=True)
+    except Exception as e:
+        logger.error(f"Flask error: {e}")
 
+# Avvia Flask quando il bot è in produzione
+if os.environ.get('RENDER') or os.environ.get('RAILWAY_STATIC_URL'):
+    # Avvia Flask in background
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    logger.info(f"🚀 Flask server started on port {os.environ.get('PORT', 8080)}")
+    
+    # Ping automatico per mantenere il bot attivo
+    def keep_alive():
+        import time
+        import requests
+        time.sleep(30)
+        while True:
+            try:
+                # Ping se stesso
+                requests.get(f"http://localhost:{os.environ.get('PORT', 8080)}/ping", timeout=5)
+                logger.info("✅ Keep-alive ping sent")
+            except Exception as e:
+                logger.warning(f"⚠️ Keep-alive failed: {e}")
+            time.sleep(300)  # Ogni 5 minuti
+    
+    # Avvia keep-alive
+    keep_alive_thread = threading.Thread(target=keep_alive, daemon=True)
+    keep_alive_thread.start()
 # ==================== AUTO-PING (10 righe totali) ====================
 
 def auto_ping():
@@ -5755,27 +5785,105 @@ def start_webhook():
         sys.exit(1)
 
 def main():
-    """Funzione principale con keep-alive automatico"""
-    if os.environ.get('RENDER'):
-        logger.info("🎯 Modalità Render attivata")
+    """Funzione principale semplificata"""
+    import asyncio
+    
+    if os.environ.get('RENDER') or os.environ.get('RAILWAY_STATIC_URL'):
+        logger.info("🚀 Avvio in modalità produzione (webhook)")
         
-        # Double check: avvia un altro thread di ping per sicurezza
-        def extra_ping():
-            time.sleep(60)  # Aspetta 1 minuto
-            while True:
-                try:
-                    requests.get("https://telegram-bot-osint.onrender.com/health", timeout=5)
-                    time.sleep(240)  # 4 minuti
-                except:
-                    time.sleep(30)
+        # Configurazione webhook semplice
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         
-        threading.Thread(target=extra_ping, daemon=True).start()
-        logger.info("🔄 Extra ping thread avviato")
+        async def start_webhook():
+            application = Application.builder().token(BOT_TOKEN).build()
+            
+            # Setup bot handlers
+            bot = LeakosintBot()
+            
+            application.add_handler(CommandHandler("start", bot.start))
+            application.add_handler(CommandHandler("menu", bot.menu_completo))
+            application.add_handler(CommandHandler("balance", bot.balance_command))
+            application.add_handler(CommandHandler("buy", bot.buy_command))
+            application.add_handler(CommandHandler("admin", bot.admin_panel))
+            application.add_handler(CommandHandler("addcredits", bot.addcredits_command))
+            application.add_handler(CommandHandler("help", bot.help_command))
+            application.add_handler(CommandHandler("utf8", bot.utf8_command))
+            application.add_handler(CommandHandler("debug_mvvidster", bot.debug_mvvidster))
+            
+            application.add_handler(CallbackQueryHandler(bot.handle_button_callback))
+            
+            application.add_handler(MessageHandler(
+                filters.Regex(r'(?i)(telegram|instagram|facebook|vk|tg|ig|fb|vkontakte)') & ~filters.COMMAND,
+                bot.handle_social_search
+            ))
+            
+            application.add_handler(MessageHandler(
+                filters.Document.ALL & ~filters.COMMAND,
+                bot.handle_document
+            ))
+            
+            application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message))
+            
+            # Webhook URL da Render/Railway
+            webhook_url = os.environ.get('WEBHOOK_URL') or os.environ.get('RAILWAY_STATIC_URL')
+            
+            if not webhook_url:
+                logger.error("❌ WEBHOOK_URL non configurata!")
+                return
+            
+            webhook_url = f"{webhook_url.rstrip('/')}/{BOT_TOKEN}"
+            logger.info(f"🌐 Webhook URL: {webhook_url}")
+            
+            # Imposta webhook
+            await application.bot.set_webhook(url=webhook_url)
+            
+            # Non fare run_webhook, lascia che Flask gestisca le richieste
+            logger.info("✅ Bot ready! Webhook set successfully.")
+            
+            # Tieni il bot in esecuzione
+            await asyncio.Event().wait()
         
-        start_webhook()
+        loop.run_until_complete(start_webhook())
+        
     else:
-        logger.info("🏠 Modalità sviluppo attivata")
-        start_polling()
-
-if __name__ == '__main__':
-    main()
+        logger.info("🏠 Avvio in modalità sviluppo (polling)")
+        
+        # Avvio normale in polling
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        async def start_polling():
+            application = Application.builder().token(BOT_TOKEN).build()
+            
+            # Setup bot handlers
+            bot = LeakosintBot()
+            
+            application.add_handler(CommandHandler("start", bot.start))
+            application.add_handler(CommandHandler("menu", bot.menu_completo))
+            application.add_handler(CommandHandler("balance", bot.balance_command))
+            application.add_handler(CommandHandler("buy", bot.buy_command))
+            application.add_handler(CommandHandler("admin", bot.admin_panel))
+            application.add_handler(CommandHandler("addcredits", bot.addcredits_command))
+            application.add_handler(CommandHandler("help", bot.help_command))
+            application.add_handler(CommandHandler("utf8", bot.utf8_command))
+            application.add_handler(CommandHandler("debug_mvvidster", bot.debug_mvvidster))
+            
+            application.add_handler(CallbackQueryHandler(bot.handle_button_callback))
+            
+            application.add_handler(MessageHandler(
+                filters.Regex(r'(?i)(telegram|instagram|facebook|vk|tg|ig|fb|vkontakte)') & ~filters.COMMAND,
+                bot.handle_social_search
+            ))
+            
+            application.add_handler(MessageHandler(
+                filters.Document.ALL & ~filters.COMMAND,
+                bot.handle_document
+            ))
+            
+            application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message))
+            
+            logger.info("🤖 Bot avviato in modalità polling...")
+            await application.run_polling()
+        
+        loop.run_until_complete(start_polling())
