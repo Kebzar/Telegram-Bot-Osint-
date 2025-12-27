@@ -9,22 +9,20 @@ import csv
 import io
 import socket
 import sys
+import threading
+import time
 from datetime import datetime
 from typing import Dict, List, Tuple, Optional
 from urllib.parse import quote_plus
 
-# ==================== AGGIUNTA IMPORT PER UPTIME ====================
-from flask import Flask, request, jsonify
-import threading
-import time
 import requests
-
 import phonenumbers
 from phonenumbers import carrier, geocoder, timezone
 import whois
 import dns.resolver
 from bs4 import BeautifulSoup
 import shodan
+from flask import Flask, request, jsonify
 import mysql.connector
 from mysql.connector import pooling
 
@@ -5592,12 +5590,7 @@ def load_users_mvvidster_data():
         logger.error(f"Error loading users_mvvidster: {e}")
         return False
 
-# ==================== FLASK APP PER RENDER (MODIFICATA PER UPTIME) ====================
-
-# ==================== SERVER WEB PER UPTIME ====================
-
-from flask import Flask, request, jsonify
-import threading
+# ==================== SERVER WEB SEMPLIFICATO PER UPTIMEROBOT ====================
 
 # Crea l'app Flask
 app = Flask(__name__)
@@ -5633,12 +5626,12 @@ if os.environ.get('RENDER') or os.environ.get('RAILWAY_STATIC_URL'):
     # Ping automatico per mantenere il bot attivo
     def keep_alive():
         import time
-        import requests
         time.sleep(30)
         while True:
             try:
                 # Ping se stesso
-                requests.get(f"http://localhost:{os.environ.get('PORT', 8080)}/ping", timeout=5)
+                port = os.environ.get('PORT', 8080)
+                requests.get(f"http://localhost:{port}/ping", timeout=5)
                 logger.info("✅ Keep-alive ping sent")
             except Exception as e:
                 logger.warning(f"⚠️ Keep-alive failed: {e}")
@@ -5647,26 +5640,8 @@ if os.environ.get('RENDER') or os.environ.get('RAILWAY_STATIC_URL'):
     # Avvia keep-alive
     keep_alive_thread = threading.Thread(target=keep_alive, daemon=True)
     keep_alive_thread.start()
-# ==================== AUTO-PING (10 righe totali) ====================
 
-def auto_ping():
-    """Ping automatico ogni 5 minuti per evitare sleep"""
-    time.sleep(30)  # Aspetta che l'app sia avviata
-    while True:
-        try:
-            # Ping a se stesso
-            requests.get("https://telegram-bot-osint.onrender.com/ping", timeout=5)
-            logger.info("✅ Auto-ping eseguito")
-        except:
-            logger.warning("⚠️ Auto-ping fallito")
-        time.sleep(300)  # 5 minuti = 300 secondi
-
-# Avvia auto-ping in background solo su Render
-if os.environ.get('RENDER'):
-    threading.Thread(target=auto_ping, daemon=True).start()
-    logger.info("🚀 Auto-ping attivato (ogni 5 minuti)")
-
-# ==================== AVVIO BOT ====================
+# ==================== AVVIO BOT SEMPLIFICATO ====================
 
 async def setup_bot():
     """Configura il bot con tutti gli handler"""
@@ -5710,80 +5685,6 @@ async def setup_bot():
     
     return application
 
-def start_polling():
-    """Avvia il bot in modalità polling (per sviluppo)"""
-    import asyncio
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    
-    application = loop.run_until_complete(setup_bot())
-    
-    logger.info("🏠 Avvio bot in modalità sviluppo (polling)")
-    application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
-
-def start_webhook():
-    """Avvia il bot in modalità webhook (per Render) - VERSIONE SEMPLIFICATA"""
-    import asyncio
-    import threading
-    
-    # Avvia Flask in un thread separato su una porta diversa
-    def run_flask():
-        flask_app = Flask(__name__)
-        
-        @flask_app.route('/')
-        def index():
-            return '🤖 LeakosintBot is running!'
-        
-        @flask_app.route('/health')
-        def health():
-            return 'OK', 200
-        
-        # Usa una porta diversa per Flask (non la porta principale di Render)
-        flask_port = 8080
-        flask_app.run(host='0.0.0.0', port=flask_port, debug=False, use_reloader=False, threaded=True)
-    
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-    logger.info("✅ Server Flask avviato sulla porta 8080")
-    
-    # Aspetta che Flask sia avviato
-    import time
-    time.sleep(3)
-    
-    # Avvia il bot webhook sulla porta principale
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    
-    application = loop.run_until_complete(setup_bot())
-    
-    # Configura webhook per Render
-    webhook_url = os.environ.get('WEBHOOK_URL')
-    
-    if not webhook_url:
-        logger.error("❌ WEBHOOK_URL non configurata per Render")
-        sys.exit(1)
-    
-    webhook_url = webhook_url.rstrip('/')
-    
-    # LA PORTA PRINCIPALE è quella assegnata da Render
-    port = int(os.environ.get('PORT', 10000))
-    
-    logger.info(f"🚀 Avvio bot webhook su porta: {port}")
-    logger.info(f"🌐 Webhook URL: {webhook_url}/{BOT_TOKEN}")
-    
-    try:
-        # Avvia webhook sulla porta principale
-        application.run_webhook(
-            listen="0.0.0.0",
-            port=port,
-            url_path=BOT_TOKEN,
-            webhook_url=f"{webhook_url}/{BOT_TOKEN}",
-            drop_pending_updates=True
-        )
-    except Exception as e:
-        logger.error(f"❌ Errore avvio webhook: {e}")
-        sys.exit(1)
-
 def main():
     """Funzione principale semplificata"""
     import asyncio
@@ -5796,34 +5697,7 @@ def main():
         asyncio.set_event_loop(loop)
         
         async def start_webhook():
-            application = Application.builder().token(BOT_TOKEN).build()
-            
-            # Setup bot handlers
-            bot = LeakosintBot()
-            
-            application.add_handler(CommandHandler("start", bot.start))
-            application.add_handler(CommandHandler("menu", bot.menu_completo))
-            application.add_handler(CommandHandler("balance", bot.balance_command))
-            application.add_handler(CommandHandler("buy", bot.buy_command))
-            application.add_handler(CommandHandler("admin", bot.admin_panel))
-            application.add_handler(CommandHandler("addcredits", bot.addcredits_command))
-            application.add_handler(CommandHandler("help", bot.help_command))
-            application.add_handler(CommandHandler("utf8", bot.utf8_command))
-            application.add_handler(CommandHandler("debug_mvvidster", bot.debug_mvvidster))
-            
-            application.add_handler(CallbackQueryHandler(bot.handle_button_callback))
-            
-            application.add_handler(MessageHandler(
-                filters.Regex(r'(?i)(telegram|instagram|facebook|vk|tg|ig|fb|vkontakte)') & ~filters.COMMAND,
-                bot.handle_social_search
-            ))
-            
-            application.add_handler(MessageHandler(
-                filters.Document.ALL & ~filters.COMMAND,
-                bot.handle_document
-            ))
-            
-            application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message))
+            application = await setup_bot()
             
             # Webhook URL da Render/Railway
             webhook_url = os.environ.get('WEBHOOK_URL') or os.environ.get('RAILWAY_STATIC_URL')
@@ -5854,36 +5728,12 @@ def main():
         asyncio.set_event_loop(loop)
         
         async def start_polling():
-            application = Application.builder().token(BOT_TOKEN).build()
-            
-            # Setup bot handlers
-            bot = LeakosintBot()
-            
-            application.add_handler(CommandHandler("start", bot.start))
-            application.add_handler(CommandHandler("menu", bot.menu_completo))
-            application.add_handler(CommandHandler("balance", bot.balance_command))
-            application.add_handler(CommandHandler("buy", bot.buy_command))
-            application.add_handler(CommandHandler("admin", bot.admin_panel))
-            application.add_handler(CommandHandler("addcredits", bot.addcredits_command))
-            application.add_handler(CommandHandler("help", bot.help_command))
-            application.add_handler(CommandHandler("utf8", bot.utf8_command))
-            application.add_handler(CommandHandler("debug_mvvidster", bot.debug_mvvidster))
-            
-            application.add_handler(CallbackQueryHandler(bot.handle_button_callback))
-            
-            application.add_handler(MessageHandler(
-                filters.Regex(r'(?i)(telegram|instagram|facebook|vk|tg|ig|fb|vkontakte)') & ~filters.COMMAND,
-                bot.handle_social_search
-            ))
-            
-            application.add_handler(MessageHandler(
-                filters.Document.ALL & ~filters.COMMAND,
-                bot.handle_document
-            ))
-            
-            application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message))
+            application = await setup_bot()
             
             logger.info("🤖 Bot avviato in modalità polling...")
             await application.run_polling()
         
         loop.run_until_complete(start_polling())
+
+if __name__ == '__main__':
+    main()
