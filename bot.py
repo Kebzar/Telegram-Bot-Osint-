@@ -11,6 +11,7 @@ import socket
 import sys
 import threading
 import time
+import keep_alive
 from datetime import datetime
 from typing import Dict, List, Tuple, Optional
 from urllib.parse import quote_plus
@@ -5589,57 +5590,6 @@ def load_users_mvvidster_data():
     except Exception as e:
         logger.error(f"Error loading users_mvvidster: {e}")
         return False
-
-# ==================== SERVER WEB SEMPLIFICATO PER UPTIMEROBOT ====================
-
-# Crea l'app Flask
-app = Flask(__name__)
-
-# Endpoint super semplice per UptimeRobot
-@app.route('/')
-def home():
-    return '🤖 Bot is running! ✅', 200
-
-@app.route('/health')
-def health():
-    return 'OK', 200
-
-@app.route('/ping')
-def ping():
-    return 'PONG', 200
-
-# Avvia Flask in un thread separato
-def run_flask():
-    try:
-        port = int(os.environ.get('PORT', 8080))
-        app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False, threaded=True)
-    except Exception as e:
-        logger.error(f"Flask error: {e}")
-
-# Avvia Flask quando il bot è in produzione
-if os.environ.get('RENDER') or os.environ.get('RAILWAY_STATIC_URL'):
-    # Avvia Flask in background
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-    logger.info(f"🚀 Flask server started on port {os.environ.get('PORT', 8080)}")
-    
-    # Ping automatico per mantenere il bot attivo
-    def keep_alive():
-        import time
-        time.sleep(30)
-        while True:
-            try:
-                # Ping se stesso
-                port = os.environ.get('PORT', 8080)
-                requests.get(f"http://localhost:{port}/ping", timeout=5)
-                logger.info("✅ Keep-alive ping sent")
-            except Exception as e:
-                logger.warning(f"⚠️ Keep-alive failed: {e}")
-            time.sleep(300)  # Ogni 5 minuti
-    
-    # Avvia keep-alive
-    keep_alive_thread = threading.Thread(target=keep_alive, daemon=True)
-    keep_alive_thread.start()
 
 # ==================== AVVIO BOT SEMPLIFICATO ====================
 
