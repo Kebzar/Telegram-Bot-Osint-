@@ -13,14 +13,18 @@ from datetime import datetime
 from typing import Dict, List, Tuple, Optional
 from urllib.parse import quote_plus
 
+# ==================== AGGIUNTA IMPORT PER UPTIME ====================
+import threading
+import time
 import requests
+from flask import Flask, request, jsonify
+
 import phonenumbers
 from phonenumbers import carrier, geocoder, timezone
 import whois
 import dns.resolver
 from bs4 import BeautifulSoup
 import shodan
-from flask import Flask, request
 import mysql.connector
 from mysql.connector import pooling
 
@@ -5588,17 +5592,49 @@ def load_users_mvvidster_data():
         logger.error(f"Error loading users_mvvidster: {e}")
         return False
 
-# ==================== FLASK APP PER RENDER ====================
+# ==================== FLASK APP PER RENDER (MODIFICATA PER UPTIME) ====================
 
 app = Flask(__name__)
 
+# Endpoint ultra-leggeri per UptimeRobot
 @app.route('/')
 def index():
-    return '🤖 LeakosintBot is running!'
+    return '🤖 LeakosintBot is running! ✅', 200
 
 @app.route('/health')
 def health():
     return 'OK', 200
+
+@app.route('/ping')
+def ping():
+    return 'PONG', 200
+
+@app.route('/status')
+def status():
+    return jsonify({
+        'status': 'online',
+        'time': datetime.now().isoformat(),
+        'service': 'telegram-bot-osint'
+    }), 200
+
+# ==================== AUTO-PING (10 righe totali) ====================
+
+def auto_ping():
+    """Ping automatico ogni 5 minuti per evitare sleep"""
+    time.sleep(30)  # Aspetta che l'app sia avviata
+    while True:
+        try:
+            # Ping a se stesso
+            requests.get("https://telegram-bot-osint.onrender.com/ping", timeout=5)
+            logger.info("✅ Auto-ping eseguito")
+        except:
+            logger.warning("⚠️ Auto-ping fallito")
+        time.sleep(300)  # 5 minuti = 300 secondi
+
+# Avvia auto-ping in background solo su Render
+if os.environ.get('RENDER'):
+    threading.Thread(target=auto_ping, daemon=True).start()
+    logger.info("🚀 Auto-ping attivato (ogni 5 minuti)")
 
 # ==================== AVVIO BOT ====================
 
@@ -5719,9 +5755,23 @@ def start_webhook():
         sys.exit(1)
 
 def main():
-    """Funzione principale"""
+    """Funzione principale con keep-alive automatico"""
     if os.environ.get('RENDER'):
         logger.info("🎯 Modalità Render attivata")
+        
+        # Double check: avvia un altro thread di ping per sicurezza
+        def extra_ping():
+            time.sleep(60)  # Aspetta 1 minuto
+            while True:
+                try:
+                    requests.get("https://telegram-bot-osint.onrender.com/health", timeout=5)
+                    time.sleep(240)  # 4 minuti
+                except:
+                    time.sleep(30)
+        
+        threading.Thread(target=extra_ping, daemon=True).start()
+        logger.info("🔄 Extra ping thread avviato")
+        
         start_webhook()
     else:
         logger.info("🏠 Modalità sviluppo attivata")
