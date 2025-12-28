@@ -11,7 +11,6 @@ import socket
 import sys
 import threading
 import time
-import keep_alive
 from datetime import datetime
 from typing import Dict, List, Tuple, Optional
 from urllib.parse import quote_plus
@@ -5591,6 +5590,57 @@ def load_users_mvvidster_data():
         logger.error(f"Error loading users_mvvidster: {e}")
         return False
 
+# ==================== SERVER WEB SEMPLIFICATO PER UPTIMEROBOT ====================
+
+# Crea l'app Flask
+app = Flask(__name__)
+
+# Endpoint super semplice per UptimeRobot
+@app.route('/')
+def home():
+    return '🤖 Bot is running! ✅', 200
+
+@app.route('/health')
+def health():
+    return 'OK', 200
+
+@app.route('/ping')
+def ping():
+    return 'PONG', 200
+
+# Avvia Flask in un thread separato
+def run_flask():
+    try:
+        port = int(os.environ.get('PORT', 8080))
+        app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False, threaded=True)
+    except Exception as e:
+        logger.error(f"Flask error: {e}")
+
+# Avvia Flask quando il bot è in produzione
+if os.environ.get('RENDER') or os.environ.get('RAILWAY_STATIC_URL'):
+    # Avvia Flask in background
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    logger.info(f"🚀 Flask server started on port {os.environ.get('PORT', 8080)}")
+    
+    # Ping automatico per mantenere il bot attivo
+    def keep_alive():
+        import time
+        time.sleep(30)
+        while True:
+            try:
+                # Ping se stesso
+                port = os.environ.get('PORT', 8080)
+                requests.get(f"http://localhost:{port}/ping", timeout=5)
+                logger.info("✅ Keep-alive ping sent")
+            except Exception as e:
+                logger.warning(f"⚠️ Keep-alive failed: {e}")
+            time.sleep(300)  # Ogni 5 minuti
+    
+    # Avvia keep-alive
+    keep_alive_thread = threading.Thread(target=keep_alive, daemon=True)
+    keep_alive_thread.start()
+
 # ==================== AVVIO BOT SEMPLIFICATO ====================
 
 async def setup_bot():
@@ -5636,89 +5686,54 @@ async def setup_bot():
     return application
 
 def main():
-    """Funzione principale"""
+    """Funzione principale semplificata"""
     import asyncio
-    import time
-    import logging
     
-    logging.basicConfig(level=logging.INFO)
-    
-    # Carica dati
-    logging.info("📥 Caricamento dati...")
-    load_facebook_leaks_data()
-    load_addresses_documents_data()
-    load_users_mvvidster_data()
-    
-    # Crea l'applicazione del bot
-    application = Application.builder().token(BOT_TOKEN).build()
-    
-    # Setup bot
-    bot = LeakosintBot()
-    
-    # Aggiungi handlers
-    application.add_handler(CommandHandler("start", bot.start))
-    application.add_handler(CommandHandler("menu", bot.menu_completo))
-    application.add_handler(CommandHandler("balance", bot.balance_command))
-    application.add_handler(CommandHandler("buy", bot.buy_command))
-    application.add_handler(CommandHandler("admin", bot.admin_panel))
-    application.add_handler(CommandHandler("addcredits", bot.addcredits_command))
-    application.add_handler(CommandHandler("help", bot.help_command))
-    application.add_handler(CommandHandler("utf8", bot.utf8_command))
-    application.add_handler(CommandHandler("debug_mvvidster", bot.debug_mvvidster))
-    
-    application.add_handler(CallbackQueryHandler(bot.handle_button_callback))
-    
-    application.add_handler(MessageHandler(
-        filters.Regex(r'(?i)(telegram|instagram|facebook|vk|tg|ig|fb|vkontakte)') & ~filters.COMMAND,
-        bot.handle_social_search
-    ))
-    
-    application.add_handler(MessageHandler(
-        filters.Document.ALL & ~filters.COMMAND,
-        bot.handle_document
-    ))
-    
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message))
-    
-    # Inizializza il bot in keep_alive
-    try:
-        import keep_alive
-        keep_alive.set_bot_instance(application)
-        logging.info("✅ Bot instance impostata in Flask")
-    except Exception as e:
-        logging.error(f"⚠️ Errore impostazione bot instance: {e}")
-    
-    # Configura webhook se siamo in produzione
-    webhook_url = os.environ.get('WEBHOOK_URL')
-    if webhook_url:
-        logging.info(f"🌐 Configurazione webhook automatica...")
-        logging.info(f"URL: {webhook_url}")
+    if os.environ.get('RENDER') or os.environ.get('RAILWAY_STATIC_URL'):
+        logger.info("🚀 Avvio in modalità produzione (webhook)")
         
-        # Setup async
+        # Configurazione webhook semplice
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         
-        # Configura webhook
-        from telegram import Bot
-        bot_client = Bot(token=BOT_TOKEN)
+        async def start_webhook():
+            application = await setup_bot()
+            
+            # Webhook URL da Render/Railway
+            webhook_url = os.environ.get('WEBHOOK_URL') or os.environ.get('RAILWAY_STATIC_URL')
+            
+            if not webhook_url:
+                logger.error("❌ WEBHOOK_URL non configurata!")
+                return
+            
+            webhook_url = f"{webhook_url.rstrip('/')}/{BOT_TOKEN}"
+            logger.info(f"🌐 Webhook URL: {webhook_url}")
+            
+            # Imposta webhook
+            await application.bot.set_webhook(url=webhook_url)
+            
+            # Non fare run_webhook, lascia che Flask gestisca le richieste
+            logger.info("✅ Bot ready! Webhook set successfully.")
+            
+            # Tieni il bot in esecuzione
+            await asyncio.Event().wait()
         
-        try:
-            loop.run_until_complete(bot_client.delete_webhook())
-            webhook_full_url = f"{webhook_url.rstrip('/')}/webhook/{BOT_TOKEN}"
-            loop.run_until_complete(bot_client.set_webhook(webhook_full_url))
-            logging.info(f"✅ Webhook configurato: {webhook_full_url}")
-        except Exception as e:
-            logging.error(f"❌ Errore configurazione webhook: {e}")
-    
-    logging.info("🤖 Bot pronto e in ascolto!")
-    logging.info("📝 Invia /start su Telegram per testare")
-    
-    # Mantieni il programma in esecuzione
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        logging.info("Bot fermato")
+        loop.run_until_complete(start_webhook())
+        
+    else:
+        logger.info("🏠 Avvio in modalità sviluppo (polling)")
+        
+        # Avvio normale in polling
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        async def start_polling():
+            application = await setup_bot()
+            
+            logger.info("🤖 Bot avviato in modalità polling...")
+            await application.run_polling()
+        
+        loop.run_until_complete(start_polling())
 
 if __name__ == '__main__':
     main()
