@@ -58,7 +58,7 @@ def set_bot_instance(bot_app):
 
 def run_flask():
     """Avvia Flask"""
-    port = int(os.environ.get('PORT', 8080))
+    port = int(os.environ.get('PORT', 10000))
     logging.info(f"🚀 Avvio Flask su porta {port}")
     app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
 
