@@ -5592,36 +5592,43 @@ def load_users_mvvidster_data():
 
 # ==================== SERVER WEB SEMPLIFICATO PER UPTIMEROBOT ====================
 
-# Crea l'app Flask
-app = Flask(__name__)
+# ==================== SERVER WEB SEMPLIFICATO PER UPTIMEROBOT ====================
+# IMPORTANTE: Usa l'app Flask da keep_alive.py invece di crearne un'altra
 
-# Endpoint super semplice per UptimeRobot
-@app.route('/')
-def home():
-    return '🤖 Bot is running! ✅', 200
-
-@app.route('/health')
-def health():
-    return 'OK', 200
-
-@app.route('/ping')
-def ping():
-    return 'PONG', 200
-
-# Avvia Flask in un thread separato
-def run_flask():
+# Avvia il server Flask solo quando necessario
+def run_keep_alive():
+    """Avvia il server Flask da keep_alive.py"""
     try:
-        port = int(os.environ.get('PORT', 8080))
-        app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False, threaded=True)
+        port = int(os.environ.get('PORT', 10000))
+        logging.info(f"🚀 Avvio Flask (keep_alive) su porta {port}")
+        keep_alive.app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False, threaded=True)
     except Exception as e:
-        logger.error(f"Flask error: {e}")
+        logging.error(f"Flask keep_alive error: {e}")
 
 # Avvia Flask quando il bot è in produzione
 if os.environ.get('RENDER') or os.environ.get('RAILWAY_STATIC_URL'):
     # Avvia Flask in background
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread = threading.Thread(target=run_keep_alive, daemon=True)
     flask_thread.start()
-    logger.info(f"🚀 Flask server started on port {os.environ.get('PORT', 8080)}")
+    logger.info(f"🚀 Flask server started on port {os.environ.get('PORT', 10000)}")
+    
+    # Ping automatico per mantenere il bot attivo
+    def keep_alive_ping():
+        import time
+        time.sleep(30)
+        while True:
+            try:
+                # Ping se stesso
+                port = os.environ.get('PORT', 10000)
+                requests.get(f"http://localhost:{port}/ping", timeout=5)
+                logger.info("✅ Keep-alive ping sent")
+            except Exception as e:
+                logger.warning(f"⚠️ Keep-alive failed: {e}")
+            time.sleep(300)  # Ogni 5 minuti
+    
+    # Avvia keep-alive
+    keep_alive_thread = threading.Thread(target=keep_alive_ping, daemon=True)
+    keep_alive_thread.start()
     
     # Ping automatico per mantenere il bot attivo
     def keep_alive():
@@ -5699,20 +5706,26 @@ def main():
         async def start_webhook():
             application = await setup_bot()
             
+            # IMPOSTA L'ISTANZA DEL BOT IN KEEP_ALIVE
+            from keep_alive import set_bot_instance
+            set_bot_instance(application)
+            
             # Webhook URL da Render/Railway
             webhook_url = os.environ.get('WEBHOOK_URL') or os.environ.get('RAILWAY_STATIC_URL')
             
             if not webhook_url:
-                logger.error("❌ WEBHOOK_URL non configurata!")
-                return
+                # Su Render, l'URL è automatico
+                app_name = os.environ.get('RENDER_SERVICE_NAME', 'your-app')
+                webhook_url = f"https://{app_name}.onrender.com"
+                logger.info(f"📝 Usando URL Render predefinito: {webhook_url}")
             
-            webhook_url = f"{webhook_url.rstrip('/')}/{BOT_TOKEN}"
+            # Aggiungi il path del webhook
+            webhook_url = f"{webhook_url.rstrip('/')}/webhook/{BOT_TOKEN}"
             logger.info(f"🌐 Webhook URL: {webhook_url}")
             
             # Imposta webhook
             await application.bot.set_webhook(url=webhook_url)
             
-            # Non fare run_webhook, lascia che Flask gestisca le richieste
             logger.info("✅ Bot ready! Webhook set successfully.")
             
             # Tieni il bot in esecuzione
@@ -5734,6 +5747,3 @@ def main():
             await application.run_polling()
         
         loop.run_until_complete(start_polling())
-
-if __name__ == '__main__':
-    main()
