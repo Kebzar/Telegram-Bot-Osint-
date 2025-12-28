@@ -2668,8 +2668,40 @@ class LeakSearchAPI:
 class LeakosintBot:
     """Bot principale con interfaccia come nelle immagini"""
     
-    def __init__(self):
+    def __init__(self, application=None):
         self.api = LeakSearchAPI()
+        if application:
+            self.setup_handlers(application)
+    
+    def setup_handlers(self, application):
+        """Configura tutti gli handler del bot"""
+        # Aggiungi command handlers
+        application.add_handler(CommandHandler("start", self.start))
+        application.add_handler(CommandHandler("menu", self.menu_completo))
+        application.add_handler(CommandHandler("help", self.help_command))
+        application.add_handler(CommandHandler("balance", self.balance_command))
+        application.add_handler(CommandHandler("buy", self.buy_command))
+        application.add_handler(CommandHandler("admin", self.admin_panel))
+        application.add_handler(CommandHandler("addcredits", self.addcredits_command))
+        application.add_handler(CommandHandler("utf8", self.utf8_command))
+        application.add_handler(CommandHandler("debug_mvvidster", self.debug_mvvidster))
+        
+        # Handler per i pulsanti
+        application.add_handler(CallbackQueryHandler(self.handle_button_callback))
+        
+        # Handler per messaggi di testo
+        application.add_handler(MessageHandler(
+            filters.TEXT & ~filters.COMMAND, 
+            self.handle_message
+        ))
+        
+        # Handler per documenti (.txt)
+        application.add_handler(MessageHandler(
+            filters.Document.ALL, 
+            self.handle_document
+        ))
+        
+        logger.info("✅ Bot handlers configured")
     
     def get_user_language(self, user_id: int) -> str:
         result = db.execute_query(
@@ -5592,158 +5624,80 @@ def load_users_mvvidster_data():
 
 # ==================== SERVER WEB SEMPLIFICATO PER UPTIMEROBOT ====================
 
-# ==================== SERVER WEB SEMPLIFICATO PER UPTIMEROBOT ====================
-# IMPORTANTE: Usa l'app Flask da keep_alive.py invece di crearne un'altra
+# Crea l'app Flask
+app = Flask(__name__)
 
-# Avvia il server Flask solo quando necessario
-def run_keep_alive():
-    """Avvia il server Flask da keep_alive.py"""
+# Endpoint super semplice per UptimeRobot
+@app.route('/')
+def home():
+    return '🤖 Bot is running! ✅', 200
+
+@app.route('/health')
+def health():
+    return 'OK', 200
+
+@app.route('/ping')
+def ping():
+    return 'PONG', 200
+
+# Avvia Flask in un thread separato
+def run_flask():
     try:
-        port = int(os.environ.get('PORT', 10000))
-        logging.info(f"🚀 Avvio Flask (keep_alive) su porta {port}")
-        keep_alive.app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False, threaded=True)
+        port = int(os.environ.get('PORT', 8080))
+        app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False, threaded=True)
     except Exception as e:
-        logging.error(f"Flask keep_alive error: {e}")
+        logger.error(f"Flask error: {e}")
 
-# Avvia Flask quando il bot è in produzione
-if os.environ.get('RENDER') or os.environ.get('RAILWAY_STATIC_URL'):
-    # Avvia Flask in background
-    flask_thread = threading.Thread(target=run_keep_alive, daemon=True)
-    flask_thread.start()
-    logger.info(f"🚀 Flask server started on port {os.environ.get('PORT', 10000)}")
-    
-    # Ping automatico per mantenere il bot attivo
-    def keep_alive_ping():
-        import time
-        time.sleep(30)
-        while True:
-            try:
-                # Ping se stesso
-                port = os.environ.get('PORT', 10000)
-                requests.get(f"http://localhost:{port}/ping", timeout=5)
-                logger.info("✅ Keep-alive ping sent")
-            except Exception as e:
-                logger.warning(f"⚠️ Keep-alive failed: {e}")
-            time.sleep(300)  # Ogni 5 minuti
-    
-    # Avvia keep-alive
-    keep_alive_thread = threading.Thread(target=keep_alive_ping, daemon=True)
-    keep_alive_thread.start()
-    
-    # Ping automatico per mantenere il bot attivo
-    def keep_alive():
-        import time
-        time.sleep(30)
-        while True:
-            try:
-                # Ping se stesso
-                port = os.environ.get('PORT', 8080)
-                requests.get(f"http://localhost:{port}/ping", timeout=5)
-                logger.info("✅ Keep-alive ping sent")
-            except Exception as e:
-                logger.warning(f"⚠️ Keep-alive failed: {e}")
-            time.sleep(300)  # Ogni 5 minuti
-    
-    # Avvia keep-alive
-    keep_alive_thread = threading.Thread(target=keep_alive, daemon=True)
-    keep_alive_thread.start()
+# ==================== AVVIO BOT CON POLLING ====================
 
-# ==================== AVVIO BOT SEMPLIFICATO ====================
-
-async def setup_bot():
-    """Configura il bot con tutti gli handler"""
+def setup_application(application):
+    """Configura l'applicazione con tutti gli handler"""
+    # Carica i dati prima di avviare
     logger.info("📥 Loading Facebook leaks data...")
     load_facebook_leaks_data()
-    
-    logger.info("📥 Loading addresses/documents data...")
+    logger.info("📥 Loading addresses data...")
     load_addresses_documents_data()
-    
-    logger.info("📥 Loading users_mvvidster data...")
+    logger.info("📥 Loading mvvidster data...")
     load_users_mvvidster_data()
     
-    application = Application.builder().token(BOT_TOKEN).build()
-    
-    # Setup bot handlers
-    bot = LeakosintBot()
-    
-    application.add_handler(CommandHandler("start", bot.start))
-    application.add_handler(CommandHandler("menu", bot.menu_completo))
-    application.add_handler(CommandHandler("balance", bot.balance_command))
-    application.add_handler(CommandHandler("buy", bot.buy_command))
-    application.add_handler(CommandHandler("admin", bot.admin_panel))
-    application.add_handler(CommandHandler("addcredits", bot.addcredits_command))
-    application.add_handler(CommandHandler("help", bot.help_command))
-    application.add_handler(CommandHandler("utf8", bot.utf8_command))
-    application.add_handler(CommandHandler("debug_mvvidster", bot.debug_mvvidster))
-    
-    application.add_handler(CallbackQueryHandler(bot.handle_button_callback))
-    
-    application.add_handler(MessageHandler(
-        filters.Regex(r'(?i)(telegram|instagram|facebook|vk|tg|ig|fb|vkontakte)') & ~filters.COMMAND,
-        bot.handle_social_search
-    ))
-    
-    application.add_handler(MessageHandler(
-        filters.Document.ALL & ~filters.COMMAND,
-        bot.handle_document
-    ))
-    
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message))
-    
-    return application
+    # Crea il bot e aggiungi handler
+    bot = LeakosintBot(application)
+    return bot
 
 def main():
-    """Funzione principale semplificata"""
-    import asyncio
+    """Funzione principale"""
+    logger.info("🚀 Starting Leakosint Bot...")
     
-    if os.environ.get('RENDER') or os.environ.get('RAILWAY_STATIC_URL'):
-        logger.info("🚀 Avvio in modalità produzione (webhook)")
+    # 1. AVVIA SEMPRE FLASK PER UPTIMEROBOT
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    logger.info(f"🌐 Flask server started on port {os.environ.get('PORT', 8080)}")
+    
+    # 2. CREA E CONFIGURA BOT
+    from telegram.ext import Application
+    
+    try:
+        # Crea l'applicazione
+        application = Application.builder().token(BOT_TOKEN).build()
         
-        # Configurazione webhook semplice
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        # Configura handler
+        setup_application(application)
         
-        async def start_webhook():
-            application = await setup_bot()
-            
-            # IMPOSTA L'ISTANZA DEL BOT IN KEEP_ALIVE
-            from keep_alive import set_bot_instance
-            set_bot_instance(application)
-            
-            # Webhook URL da Render/Railway
-            webhook_url = os.environ.get('WEBHOOK_URL') or os.environ.get('RAILWAY_STATIC_URL')
-            
-            if not webhook_url:
-                # Su Render, l'URL è automatico
-                app_name = os.environ.get('RENDER_SERVICE_NAME', 'your-app')
-                webhook_url = f"https://{app_name}.onrender.com"
-                logger.info(f"📝 Usando URL Render predefinito: {webhook_url}")
-            
-            # Aggiungi il path del webhook
-            webhook_url = f"{webhook_url.rstrip('/')}/webhook/{BOT_TOKEN}"
-            logger.info(f"🌐 Webhook URL: {webhook_url}")
-            
-            # Imposta webhook
-            await application.bot.set_webhook(url=webhook_url)
-            
-            logger.info("✅ Bot ready! Webhook set successfully.")
-            
-            # Tieni il bot in esecuzione
-            await asyncio.Event().wait()
+        logger.info("🤖 Bot configured, starting polling...")
         
-        loop.run_until_complete(start_webhook())
+        # 3. AVVIA POLLING
+        application.run_polling(
+            drop_pending_updates=True,
+            allowed_updates=Update.ALL_TYPES,
+            poll_interval=1.0,  # Secondi tra i polling
+            timeout=30  # Timeout per le richieste
+        )
         
-    else:
-        logger.info("🏠 Avvio in modalità sviluppo (polling)")
-        
-        # Avvio normale in polling
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        async def start_polling():
-            application = await setup_bot()
-            
-            logger.info("🤖 Bot avviato in modalità polling...")
-            await application.run_polling()
-        
-        loop.run_until_complete(start_polling())
+    except Exception as e:
+        logger.error(f"❌ Fatal error: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+if __name__ == '__main__':
+    main()
