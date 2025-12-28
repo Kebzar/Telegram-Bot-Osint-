@@ -5685,117 +5685,6 @@ async def setup_bot():
     
     return application
 
-def main():
-    """Funzione principale semplificata"""
-    import asyncio
-    
-    if os.environ.get('RENDER') or os.environ.get('RAILWAY_STATIC_URL'):
-        logger.info("🚀 Avvio in modalità produzione (webhook)")
-        
-        # Configurazione webhook semplice
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        async def start_webhook():
-            application = await setup_bot()
-            
-            # Webhook URL da Render/Railway
-            webhook_url = os.environ.get('WEBHOOK_URL') or os.environ.get('RAILWAY_STATIC_URL')
-            
-            if not webhook_url:
-                logger.error("❌ WEBHOOK_URL non configurata!")
-                return
-            
-            webhook_url = f"{webhook_url.rstrip('/')}/{BOT_TOKEN}"
-            logger.info(f"🌐 Webhook URL: {webhook_url}")
-            
-            # Imposta webhook
-            await application.bot.set_webhook(url=webhook_url)
-            
-            # Non fare run_webhook, lascia che Flask gestisca le richieste
-            logger.info("✅ Bot ready! Webhook set successfully.")
-            
-            # Tieni il bot in esecuzione
-            await asyncio.Event().wait()
-        
-        loop.run_until_complete(start_webhook())
-        
-    else:
-        logger.info("🏠 Avvio in modalità sviluppo (polling)")
-        
-        # Avvio normale in polling
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        async def start_polling():
-            application = await setup_bot()
-            
-            logger.info("🤖 Bot avviato in modalità polling...")
-            await application.run_polling()
-        
-        loop.run_until_complete(start_polling())
-
-if __name__ == '__main__':
-    # 🚀 AVVIA IL SERVER WEB PER UPTIMEROBOT (solo per ping)
-    web_thread = threading.Thread(target=run_flask, daemon=True)
-    web_thread.start()
-    logger.info(f"🚀 Server web avviato su porta {os.environ.get('PORT', 10000)}")
-    
-    # 🔄 AVVIA IL BOT IN POLLING (questo è quello che manca!)
-    def run_telegram_bot():
-        """Avvia il bot Telegram in modalità polling"""
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        async def start_bot():
-            try:
-                # Configura il bot come nel tuo setup_bot()
-                logger.info("📥 Caricamento dati...")
-                load_facebook_leaks_data()
-                load_addresses_documents_data()
-                load_users_mvvidster_data()
-                
-                # Crea l'applicazione Telegram
-                application = Application.builder().token(BOT_TOKEN).build()
-                
-                # Setup bot handlers
-                bot = LeakosintBot()
-                
-                application.add_handler(CommandHandler("start", bot.start))
-                application.add_handler(CommandHandler("menu", bot.menu_completo))
-                application.add_handler(CommandHandler("balance", bot.balance_command))
-                application.add_handler(CommandHandler("buy", bot.buy_command))
-                application.add_handler(CommandHandler("admin", bot.admin_panel))
-                application.add_handler(CommandHandler("addcredits", bot.addcredits_command))
-                application.add_handler(CommandHandler("help", bot.help_command))
-                application.add_handler(CommandHandler("utf8", bot.utf8_command))
-                application.add_handler(CommandHandler("debug_mvvidster", bot.debug_mvvidster))
-                
-                application.add_handler(CallbackQueryHandler(bot.handle_button_callback))
-                
-                application.add_handler(MessageHandler(
-                    filters.Regex(r'(?i)(telegram|instagram|facebook|vk|tg|ig|fb|vkontakte)') & ~filters.COMMAND,
-                    bot.handle_social_search
-                ))
-                
-                application.add_handler(MessageHandler(
-                    filters.Document.ALL & ~filters.COMMAND,
-                    bot.handle_document
-                ))
-                
-                application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message))
-                
-                logger.info("🤖 Bot Telegram avviato in modalità polling...")
-                await application.run_polling()
-                
-            except Exception as e:
-                logger.error(f"❌ Errore avvio bot: {e}")
-                import traceback
-                logger.error(traceback.format_exc())
-        
-        try:
-            loop.run_until_complete(start_bot())
-        except KeyboardInterrupt:
             logger.info("🛑 Bot fermato")
         except Exception as e:
             logger.error(f"❌ Errore loop: {e}")
@@ -5816,3 +5705,92 @@ if __name__ == '__main__':
             logger.info("🔄 Sistema ancora attivo...")
     except KeyboardInterrupt:
         logger.info("🛑 Arresto sistema")
+
+
+def start_telegram_bot():
+    """Avvia il bot Telegram in polling"""
+    import asyncio
+    
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    async def run_bot():
+        try:
+            # Carica i dati
+            logger.info("📥 Caricamento dati...")
+            load_facebook_leaks_data()
+            load_addresses_documents_data()
+            load_users_mvvidster_data()
+            
+            # Setup dell'applicazione Telegram
+            application = Application.builder().token(BOT_TOKEN).build()
+            
+            # Inizializza il bot
+            bot = LeakosintBot()
+            
+            # Aggiungi tutti gli handler del bot
+            application.add_handler(CommandHandler("start", bot.start))
+            application.add_handler(CommandHandler("menu", bot.menu_completo))
+            application.add_handler(CommandHandler("balance", bot.balance_command))
+            application.add_handler(CommandHandler("buy", bot.buy_command))
+            application.add_handler(CommandHandler("admin", bot.admin_panel))
+            application.add_handler(CommandHandler("addcredits", bot.addcredits_command))
+            application.add_handler(CommandHandler("help", bot.help_command))
+            application.add_handler(CommandHandler("utf8", bot.utf8_command))
+            application.add_handler(CommandHandler("debug_mvvidster", bot.debug_mvvidster))
+            
+            application.add_handler(CallbackQueryHandler(bot.handle_button_callback))
+            
+            application.add_handler(MessageHandler(
+                filters.Regex(r'(?i)(telegram|instagram|facebook|vk|tg|ig|fb|vkontakte)') & ~filters.COMMAND,
+                bot.handle_social_search
+            ))
+            
+            application.add_handler(MessageHandler(
+                filters.Document.ALL & ~filters.COMMAND,
+                bot.handle_document
+            ))
+            
+            application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_message))
+            
+            logger.info("🤖 Bot Telegram avviato in modalità polling...")
+            
+            # AVVIA IL POLLING - QUESTO È IL CUORE CHE MANCAVA
+            await application.run_polling()
+            
+        except Exception as e:
+            logger.error(f"❌ Errore nel bot: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+    
+    try:
+        loop.run_until_complete(run_bot())
+    except KeyboardInterrupt:
+        logger.info("🛑 Bot fermato manualmente")
+    except Exception as e:
+        logger.error(f"❌ Errore fatale: {e}")
+
+if __name__ == '__main__':
+    # 🚀 AVVIA IL SERVER WEB PER UPTIMEROBOT (solo per ping)
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    logger.info(f"✅ Server web Flask avviato su porta {os.environ.get('PORT', 10000)}")
+    
+    # 🤖 AVVIA IL BOT TELEGRAM IN UN THREAD SEPARATO
+    bot_thread = threading.Thread(target=start_telegram_bot, daemon=True)
+    bot_thread.start()
+    logger.info("✅ Bot Telegram avviato in thread separato")
+    
+    # 🔄 MANTIENI IL PROGRAMMA IN ESECUZIONE
+    logger.info("✅ Sistema completamente avviato!")
+    logger.info("🌐 Server web: Risponde a UptimeRobot")
+    logger.info("🤖 Bot Telegram: In ascolto di messaggi")
+    
+    try:
+        # Keep-alive semplice - mantiene il programma attivo
+        import time
+        while True:
+            time.sleep(60)
+            logger.debug("🔄 Sistema attivo...")
+    except KeyboardInterrupt:
+        logger.info("🛑 Arresto richiesto dall'utente")
