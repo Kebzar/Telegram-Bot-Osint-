@@ -56,12 +56,13 @@ def set_bot_instance(bot_app):
     bot_instance = bot_app
     logging.info("✅ Bot instance impostata in Flask")
 
-def run_flask():
-    """Avvia Flask"""
-    port = int(os.environ.get('PORT', 10000))
-    logging.info(f"🚀 Avvio Flask su porta {port}")
-    app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
+# RIMUOVI QUESTA PARTE:
+# def run_flask():
+#     """Avvia Flask"""
+#     port = int(os.environ.get('PORT', 10000))
+#     logging.info(f"🚀 Avvio Flask su porta {port}")
+#     app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
 
-# Avvia Flask in thread separato
-flask_thread = threading.Thread(target=run_flask, daemon=True)
-flask_thread.start()
+# # Avvia Flask in thread separato
+# flask_thread = threading.Thread(target=run_flask, daemon=True)
+# flask_thread.start()
